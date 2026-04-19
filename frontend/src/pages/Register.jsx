@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/http";
 import { BrandPanel } from "@/components/BrandPanel";
 import { toast } from "sonner";
+import ReCAPTCHA from "react-google-recaptcha";
 import { CheckCircle, Shield, Fingerprint, EnvelopeSimple, Warning } from "@phosphor-icons/react";
 
 const STEPS = ["Account", "Email OTP", "Setup MFA", "Complete"];
@@ -35,7 +36,10 @@ export default function RegisterPage() {
     verify_password: "",
     captcha_answer: "",
   });
-  const [captcha, setCaptcha] = useState({ token: "", question: "" });
+  const [captcha, setCaptcha] = useState({ token: "", question: "", mode: "local" });
+  const [recaptchaToken, setRecaptchaToken] = useState("");
+  const recaptchaRef = useRef(null);
+  const RECAPTCHA_SITE_KEY = process.env.REACT_APP_RECAPTCHA_SITE_KEY;
 
   // tokens
   const [regToken, setRegToken] = useState("");
@@ -71,16 +75,31 @@ export default function RegisterPage() {
     if (form.password !== form.verify_password) {
       toast.error("Passwords do not match"); return;
     }
+    const usingRecaptcha = captcha.mode === "recaptcha_v2" && RECAPTCHA_SITE_KEY;
+    if (usingRecaptcha && !recaptchaToken) {
+      toast.error("Please complete the reCAPTCHA check.");
+      return;
+    }
     setLoading(true);
     try {
-      const payload = { ...form, captcha_token: captcha.token };
+      const payload = {
+        ...form,
+        captcha_token: usingRecaptcha ? recaptchaToken : captcha.token,
+        captcha_answer: usingRecaptcha ? "" : form.captcha_answer,
+      };
       const { data } = await api.post("/auth/register", payload);
       setRegToken(data.registration_token);
       if (data.dev_otp) setDevOtp(data.dev_otp);
       setStep(1);
-      toast.success("Account created. Verify the OTP sent to your email.");
+      toast.success(
+        data.email_delivered
+          ? "Account created. Check your email for the OTP."
+          : "Account created. Verify the OTP to continue."
+      );
     } catch (err) {
       toast.error(formatApiError(err));
+      if (recaptchaRef.current) recaptchaRef.current.reset();
+      setRecaptchaToken("");
       loadCaptcha();
     } finally {
       setLoading(false);
@@ -170,22 +189,36 @@ export default function RegisterPage() {
               </div>
 
               <div className="rounded-md border border-border bg-chc-mist p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-widest text-chc-slate">Human check</p>
-                    <p className="mt-1 font-mono text-lg text-chc-navy" data-testid="reg-captcha-question">{captcha.question}</p>
+                {captcha.mode === "recaptcha_v2" && RECAPTCHA_SITE_KEY ? (
+                  <div data-testid="reg-recaptcha-wrapper">
+                    <p className="text-[11px] uppercase tracking-widest text-chc-slate mb-2">Human check</p>
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={RECAPTCHA_SITE_KEY}
+                      onChange={(t) => setRecaptchaToken(t || "")}
+                      onExpired={() => setRecaptchaToken("")}
+                    />
                   </div>
-                  <button type="button" onClick={loadCaptcha} className="text-xs text-chc-blue hover:underline" data-testid="reg-captcha-refresh">refresh</button>
-                </div>
-                <input
-                  data-testid="reg-captcha-answer"
-                  value={form.captcha_answer}
-                  onChange={set("captcha_answer")}
-                  inputMode="numeric"
-                  className="mt-3 h-10 w-36 rounded-md border border-border bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0073CF]"
-                  placeholder="Answer"
-                  required
-                />
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-widest text-chc-slate">Human check</p>
+                        <p className="mt-1 font-mono text-lg text-chc-navy" data-testid="reg-captcha-question">{captcha.question}</p>
+                      </div>
+                      <button type="button" onClick={loadCaptcha} className="text-xs text-chc-blue hover:underline" data-testid="reg-captcha-refresh">refresh</button>
+                    </div>
+                    <input
+                      data-testid="reg-captcha-answer"
+                      value={form.captcha_answer}
+                      onChange={set("captcha_answer")}
+                      inputMode="numeric"
+                      className="mt-3 h-10 w-36 rounded-md border border-border bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0073CF]"
+                      placeholder="Answer"
+                      required
+                    />
+                  </>
+                )}
               </div>
 
               <button type="submit" disabled={loading} data-testid="reg-submit"

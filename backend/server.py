@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta  # noqa: E402
 from typing import List, Optional  # noqa: E402
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Form  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.responses import JSONResponse, Response  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 from pydantic import BaseModel, EmailStr, Field  # noqa: E402
@@ -43,6 +43,10 @@ from auth_utils import (  # noqa: E402
 from phi_purger import purge_phi  # noqa: E402
 from ocr_service import extract_text  # noqa: E402
 from coding_engine import run_coding, coding_to_dict  # noqa: E402
+from email_service import send_email, tpl_otp, tpl_approved, tpl_rejected, tpl_new_registration_admin  # noqa: E402
+from captcha_service import issue_challenge, verify as verify_captcha, recaptcha_enabled  # noqa: E402
+from pdf_export import build_pdf  # noqa: E402
+from cms_refresh import fetch_status as cms_fetch_status, save_status as cms_save_status, get_latest as cms_get_latest, refresh_loop as cms_refresh_loop  # noqa: E402
 
 # ---------- DB ----------
 mongo_url = os.environ["MONGO_URL"]
@@ -120,7 +124,7 @@ class RegisterIn(BaseModel):
     password: str
     verify_password: str
     captcha_token: str
-    captcha_answer: str
+    captcha_answer: Optional[str] = ""  # only used for local arithmetic fallback
 
 
 class VerifyOtpIn(BaseModel):
@@ -164,41 +168,21 @@ class ApprovalIn(BaseModel):
     reason: Optional[str] = ""
 
 
-# ---------- Captcha (local, no 3rd-party) ----------
-# Generate arithmetic challenges server-side; client submits the answer.
-_captchas: dict[str, int] = {}
+# ---------- Captcha (reCAPTCHA v2 with local fallback) ----------
 
 
 @api.get("/captcha")
 async def get_captcha():
-    a = secrets.randbelow(9) + 1
-    b = secrets.randbelow(9) + 1
-    op = secrets.choice(["+", "-", "×"])
-    if op == "+":
-        answer = a + b
-    elif op == "-":
-        # avoid negative
-        if b > a:
-            a, b = b, a
-        answer = a - b
-    else:
-        answer = a * b
-    token = secrets.token_urlsafe(16)
-    _captchas[token] = answer
-    # Limit size
-    if len(_captchas) > 1000:
-        _captchas.clear()
-    return {"token": token, "question": f"{a} {op} {b} = ?"}
+    """Return captcha configuration. If reCAPTCHA is configured, clients should
+    render the widget with REACT_APP_RECAPTCHA_SITE_KEY. Otherwise we issue a
+    local arithmetic challenge."""
+    return issue_challenge()
 
 
-def _check_captcha(token: str, answer: str) -> bool:
-    expected = _captchas.pop(token, None)
-    if expected is None:
-        return False
-    try:
-        return int(str(answer).strip()) == expected
-    except Exception:
-        return False
+def _check_captcha(token: str, answer: str, request: Request | None = None) -> bool:
+    ip = request.client.host if request else None
+    ok, _ = verify_captcha(token, answer, ip)
+    return ok
 
 
 # ---------- Auth ----------
@@ -262,13 +246,21 @@ async def register(data: RegisterIn):
     await audit(user_id, "register_submit", {"email": email})
     logger.info("OTP for %s (dev mode): %s", email, otp)
 
+    # Send OTP email via Resend (falls back to console log when dev mode)
+    subject, html = tpl_otp(otp, data.first_name)
+    delivery = await send_email(email, subject, html)
+
     reg_token = create_registration_token(user_id, "otp")
-    # Dev mode: return OTP in response so it can be displayed on-screen.
-    return {
+    response = {
         "registration_token": reg_token,
-        "message": "OTP sent to your email (dev mode: OTP is shown on screen).",
-        "dev_otp": otp,
+        "message": "OTP sent to your email.",
+        "email_delivered": delivery.get("delivered", False),
     }
+    # Keep dev OTP in response only when delivery failed — so the flow keeps
+    # working during local testing or with unverified Resend domains.
+    if not delivery.get("delivered"):
+        response["dev_otp"] = otp
+    return response
 
 
 @api.post("/auth/verify-otp")
@@ -344,6 +336,15 @@ async def confirm_mfa(data: ConfirmMFAIn):
             "read": False,
             "created_at": iso_now(),
         })
+        # Best-effort email to admin (fire-and-forget; failures only logged)
+        subject, html = tpl_new_registration_admin(
+            user.get("email", ""),
+            f"{user.get('first_name','')} {user.get('last_name','')}".strip(),
+            user.get("npi", ""),
+        )
+        admin_full = await db.users.find_one({"id": a["id"]}, {"_id": 0, "email": 1})
+        if admin_full and admin_full.get("email"):
+            await send_email(admin_full["email"], subject, html)
 
     return {"message": "Registration complete. Awaiting admin approval."}
 
@@ -498,6 +499,8 @@ async def admin_approve(user_id: str, data: ApprovalIn, admin: dict = Depends(re
         "read": False,
         "created_at": iso_now(),
     })
+    subject, html = tpl_approved(f"{user.get('first_name','')} {user.get('last_name','')}".strip())
+    await send_email(user.get("email", ""), subject, html)
     await audit(admin["id"], "admin_approve_user", {"target_user": user_id})
     return {"message": "User approved"}
 
@@ -517,6 +520,8 @@ async def admin_reject(user_id: str, data: ApprovalIn, admin: dict = Depends(req
         "read": False,
         "created_at": iso_now(),
     })
+    subject, html = tpl_rejected(data.reason or "", f"{user.get('first_name','')} {user.get('last_name','')}".strip())
+    await send_email(user.get("email", ""), subject, html)
     await audit(admin["id"], "admin_reject_user", {"target_user": user_id, "reason": data.reason})
     return {"message": "User rejected"}
 
@@ -711,6 +716,40 @@ async def delete_session(session_id: str, user: dict = Depends(require_approved_
     return {"message": "Session deleted"}
 
 
+@api.get("/coding/sessions/{session_id}/pdf")
+async def download_pdf(session_id: str, user: dict = Depends(require_approved_user)):
+    session = await db.coding_sessions.find_one({"id": session_id, "user_id": user["id"]}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.get("coding_result"):
+        raise HTTPException(status_code=400, detail="Session has not been processed")
+    pdf_bytes = build_pdf(session)
+    await audit(user["id"], "session_pdf_download", {"session_id": session_id})
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="chc-codes-{session_id[:8]}.pdf"',
+        },
+    )
+
+
+# ---------- CMS LCD/NCD refresh status ----------
+
+@api.get("/cms/status")
+async def cms_status(user: dict = Depends(get_current_user)):
+    doc = await cms_get_latest(db)
+    return doc or {"refreshed_at": None, "datasets": []}
+
+
+@api.post("/cms/refresh")
+async def cms_refresh(admin: dict = Depends(require_admin)):
+    status = await cms_fetch_status()
+    await cms_save_status(db, status)
+    await audit(admin["id"], "cms_refresh_manual")
+    return status
+
+
 # ---------- Settings ----------
 
 @api.post("/settings/change-password")
@@ -866,7 +905,7 @@ app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

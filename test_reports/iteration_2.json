@@ -1,0 +1,41 @@
+{
+  "summary": "Phase 2 backend verification for CHC Pro AI: 17/17 new tests pass. Covered reCAPTCHA v2 captcha mode, invalid recaptcha rejection on /api/auth/register, seeded admin/coder login still working, /api/cms/status + /api/cms/refresh (admin-only, 5 datasets lcd/ncd/ipps/ncci/mue), /api/coding/sessions/{id}/pdf (happy path returns real %PDF bytes, unprocessed returns 400, unauthenticated returns 401), expanded ICD-10-CM and CPT catalog keyword coverage (>=5 distinct codes), admin approve email path doesn't 500, and CORS hardening (verified directly against localhost:8001 since edge overrides headers through the public URL).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS (infra observation, NOT a backend bug)", "issue": "Backend CORSMiddleware correctly returns explicit origin + credentials=true when tested directly on localhost:8001. However, through the public URL (Cloudflare/Kubernetes edge) OPTIONS preflights are intercepted and rewritten to 'Access-Control-Allow-Origin: *' with no credentials. Browser-side credentialed requests through the public URL will therefore silently fail the CORS check in production. This is an ingress configuration problem, not a backend problem."},
+      {"endpoint": "captcha_service.recaptcha_enabled()", "issue": "The placeholder-sentinel check compares against a literal string that includes the real configured key prefix ('6LfGyb4sAAAAAFmfxlCi5BNmfkhojxrJz5ExsrCx_placeholder'). It currently evaluates to enabled=True (intended), but the sentinel is fragile — if the real key is ever changed to exactly that prefix + '_placeholder' it would silently disable recaptcha. Consider using an explicit env flag like RECAPTCHA_ENABLED instead."},
+      {"endpoint": "cms_refresh.fetch_status", "issue": "Uses requests.head with 5s timeout per dataset (x5 = up to 25s worst case) inside the request handler. An admin clicking Refresh with cms.gov unreachable would block the event loop thread for 25s. Consider parallelising with asyncio.gather + aiohttp, or moving to a background task returning 202."},
+      {"endpoint": "email_service.send_email", "issue": "Resend sender is onboarding@resend.dev which only delivers to the Resend account-holder's inbox (unverified domain). Endpoints handle this gracefully (returns delivered=false, no 500), but production-facing approval emails will not actually land in coders' inboxes until a domain is verified with Resend."},
+      {"endpoint": "pdf_export.build_pdf", "issue": "Uses datetime.utcnow() which is deprecated in Python 3.12+. Use datetime.now(timezone.utc) for consistency with the rest of the codebase."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/phase2_backend_test.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "Investigate Kubernetes/Cloudflare ingress CORS behavior: the edge is rewriting OPTIONS preflight headers to 'Access-Control-Allow-Origin: *' through the public URL, which will break credentialed browser requests in production even though the backend itself is correctly hardened.",
+    "Consider replacing requests.head (sync, in-handler) in cms_refresh.fetch_status with asyncio + aiohttp so manual /api/cms/refresh doesn't block up to 25s.",
+    "Verify a Resend sender domain so approval / OTP emails actually deliver to end users (currently silently dropped for non-Resend-account recipients)."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown past 900 lines — still above the 700-line guideline. Splitting into routers (auth, admin, coding, cms, settings) would improve maintainability.",
+    "captcha_service._LOCAL remains a process-local dict wiped at 1000 entries — same concern as Phase 1, now applies only to fallback path.",
+    "cms_refresh.fetch_status performs blocking HTTP inside the request thread (wrapped in asyncio.to_thread but still uses requests.head sequentially). Could be parallelised.",
+    "pdf_export uses datetime.utcnow() (deprecated) — should use datetime.now(timezone.utc).",
+    "captcha_service.recaptcha_enabled() sentinel check against a hard-coded placeholder prefix is fragile."
+  ],
+  "updated_files": [
+    "/app/backend/tests/phase2_backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (17/17 phase-2 tests)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "Admin: admin@chcpro.ai / AdminPass@2025! ; Coder: coder@chcpro.ai / CoderPass@2025!",
+  "seed_data_creation": "Each run creates up to 2 coding sessions for the coder (capped by the max-2 business rule, older ones are auto-purged). No new user accounts are created by Phase 2 tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two test suites now exist: backend_test.py (Phase 1, 27 tests — full auth + coding flow) and phase2_backend_test.py (17 tests — captcha mode, reCAPTCHA rejection, CMS status/refresh, PDF export, expanded catalog, email path, CORS). CORS tests MUST hit localhost:8001 directly because the Cloudflare edge rewrites OPTIONS responses through the public URL. To test the end-user CORS experience via the public URL, use an actual browser (preflight intercepted at edge level is infrastructure-owned). All other tests correctly use REACT_APP_BACKEND_URL.",
+  "rca_of_the_issue": "Initial CORS tests failed through the public URL because the Cloudflare/Kubernetes edge was returning 'Access-Control-Allow-Origin: *' on OPTIONS preflights. Verified via direct curl against localhost:8001 that the backend's CORSMiddleware is correctly configured (echoes the exact allowed origin + credentials=true, and returns 400 for disallowed origins). Test adjusted to hit the backend directly to validate the application-layer config; flagged the edge CORS rewrite as an infrastructure issue for main agent to investigate."
+}

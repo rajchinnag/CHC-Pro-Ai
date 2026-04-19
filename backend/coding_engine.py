@@ -9,126 +9,17 @@ import re
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
 
-
-# ----------------- Code dictionary -----------------
-# Each entry: keywords → (code, description, guideline_ref)
-
-ICD10_CM: List[dict] = [
-    {"keywords": ["pneumonia", "pneumonitis"], "code": "J18.9", "description": "Pneumonia, unspecified organism", "ref": "CMS LCD L35023 — Pneumonia coverage policy"},
-    {"keywords": ["community acquired pneumonia", "cap"], "code": "J15.9", "description": "Unspecified bacterial pneumonia", "ref": "ICD-10-CM Official Guidelines FY Ch. 10"},
-    {"keywords": ["hypertension", "high blood pressure", "htn"], "code": "I10", "description": "Essential (primary) hypertension", "ref": "ICD-10-CM Official Guidelines Ch. 9 I.C.9.a"},
-    {"keywords": ["type 2 diabetes", "t2dm", "diabetes mellitus type 2", "dm type 2"], "code": "E11.9", "description": "Type 2 diabetes mellitus without complications", "ref": "ICD-10-CM Guidelines Ch. 4 I.C.4.a"},
-    {"keywords": ["type 1 diabetes", "t1dm"], "code": "E10.9", "description": "Type 1 diabetes mellitus without complications", "ref": "ICD-10-CM Guidelines Ch. 4"},
-    {"keywords": ["diabetic ketoacidosis", "dka"], "code": "E11.10", "description": "Type 2 diabetes with ketoacidosis without coma", "ref": "ICD-10-CM Guidelines Ch. 4"},
-    {"keywords": ["acute myocardial infarction", "stemi", "ami", "heart attack"], "code": "I21.9", "description": "Acute myocardial infarction, unspecified", "ref": "CMS NCD 20.4 — AMI coverage"},
-    {"keywords": ["congestive heart failure", "chf", "heart failure"], "code": "I50.9", "description": "Heart failure, unspecified", "ref": "CMS LCD L34081 — Cardiac services"},
-    {"keywords": ["atrial fibrillation", "a-fib", "afib"], "code": "I48.91", "description": "Unspecified atrial fibrillation", "ref": "ICD-10-CM Guidelines Ch. 9"},
-    {"keywords": ["cerebrovascular accident", "stroke", "cva"], "code": "I63.9", "description": "Cerebral infarction, unspecified", "ref": "CMS NCD 160.14"},
-    {"keywords": ["chronic obstructive pulmonary disease", "copd"], "code": "J44.9", "description": "Chronic obstructive pulmonary disease, unspecified", "ref": "CMS LCD L33446"},
-    {"keywords": ["asthma"], "code": "J45.909", "description": "Unspecified asthma, uncomplicated", "ref": "ICD-10-CM Guidelines Ch. 10"},
-    {"keywords": ["urinary tract infection", "uti"], "code": "N39.0", "description": "Urinary tract infection, site not specified", "ref": "ICD-10-CM Guidelines Ch. 14"},
-    {"keywords": ["sepsis"], "code": "A41.9", "description": "Sepsis, unspecified organism", "ref": "ICD-10-CM Guidelines Ch. 1 I.C.1.d"},
-    {"keywords": ["acute kidney injury", "aki", "acute renal failure"], "code": "N17.9", "description": "Acute kidney failure, unspecified", "ref": "ICD-10-CM Guidelines Ch. 14"},
-    {"keywords": ["chronic kidney disease", "ckd"], "code": "N18.9", "description": "Chronic kidney disease, unspecified", "ref": "ICD-10-CM Guidelines Ch. 14"},
-    {"keywords": ["gastroesophageal reflux", "gerd"], "code": "K21.9", "description": "Gastro-esophageal reflux disease without esophagitis", "ref": "ICD-10-CM Guidelines Ch. 11"},
-    {"keywords": ["depression", "major depressive"], "code": "F32.9", "description": "Major depressive disorder, single episode, unspecified", "ref": "ICD-10-CM Guidelines Ch. 5"},
-    {"keywords": ["anxiety"], "code": "F41.9", "description": "Anxiety disorder, unspecified", "ref": "ICD-10-CM Guidelines Ch. 5"},
-    {"keywords": ["fracture femur", "femur fracture"], "code": "S72.90XA", "description": "Unspecified fracture of unspecified femur, initial encounter", "ref": "ICD-10-CM Guidelines Ch. 19 I.C.19.c"},
-    {"keywords": ["fracture hip", "hip fracture"], "code": "S72.009A", "description": "Fracture of unspecified part of neck of unspecified femur", "ref": "ICD-10-CM Guidelines Ch. 19"},
-    {"keywords": ["chest pain"], "code": "R07.9", "description": "Chest pain, unspecified", "ref": "ICD-10-CM Guidelines Ch. 18"},
-    {"keywords": ["shortness of breath", "dyspnea", "sob"], "code": "R06.02", "description": "Shortness of breath", "ref": "ICD-10-CM Guidelines Ch. 18"},
-    {"keywords": ["abdominal pain"], "code": "R10.9", "description": "Unspecified abdominal pain", "ref": "ICD-10-CM Guidelines Ch. 18"},
-    {"keywords": ["fever"], "code": "R50.9", "description": "Fever, unspecified", "ref": "ICD-10-CM Guidelines Ch. 18"},
-    {"keywords": ["obesity"], "code": "E66.9", "description": "Obesity, unspecified", "ref": "ICD-10-CM Guidelines Ch. 4"},
-    {"keywords": ["hyperlipidemia", "dyslipidemia", "high cholesterol"], "code": "E78.5", "description": "Hyperlipidemia, unspecified", "ref": "ICD-10-CM Guidelines Ch. 4"},
-    {"keywords": ["anemia"], "code": "D64.9", "description": "Anemia, unspecified", "ref": "ICD-10-CM Guidelines Ch. 3"},
-    {"keywords": ["covid", "coronavirus", "sars-cov-2"], "code": "U07.1", "description": "COVID-19", "ref": "CDC/CMS COVID-19 Coding Guidelines"},
-]
-
-CPT_CODES: List[dict] = [
-    {"keywords": ["office visit established", "established patient"], "code": "99213", "description": "Office/outpatient visit, established, low MDM", "ref": "AMA CPT 2024 E/M Guidelines"},
-    {"keywords": ["office visit new", "new patient"], "code": "99203", "description": "Office/outpatient visit, new patient, low MDM", "ref": "AMA CPT 2024 E/M Guidelines"},
-    {"keywords": ["emergency department", "ed visit", "er visit"], "code": "99284", "description": "Emergency department visit, moderate severity", "ref": "AMA CPT 2024 E/M"},
-    {"keywords": ["initial hospital care", "admission h&p"], "code": "99223", "description": "Initial hospital inpatient, high complexity", "ref": "AMA CPT 2024 E/M"},
-    {"keywords": ["subsequent hospital care"], "code": "99232", "description": "Subsequent hospital care, moderate complexity", "ref": "AMA CPT 2024 E/M"},
-    {"keywords": ["discharge"], "code": "99238", "description": "Hospital discharge day management, ≤30 min", "ref": "AMA CPT 2024 E/M"},
-    {"keywords": ["chest x-ray", "chest xray", "cxr"], "code": "71046", "description": "Radiologic examination, chest, 2 views", "ref": "AMA CPT 2024 Radiology"},
-    {"keywords": ["ekg", "ecg", "electrocardiogram"], "code": "93000", "description": "Electrocardiogram, routine ECG with 12 leads", "ref": "CMS LCD L33950"},
-    {"keywords": ["echocardiogram", "echo"], "code": "93306", "description": "Echocardiography, transthoracic, complete", "ref": "CMS LCD L33630"},
-    {"keywords": ["ct head", "head ct"], "code": "70450", "description": "CT head or brain, without contrast", "ref": "CMS NCD 220.1"},
-    {"keywords": ["ct chest"], "code": "71250", "description": "CT thorax, without contrast", "ref": "CMS NCD 220.1"},
-    {"keywords": ["mri brain"], "code": "70551", "description": "MRI brain, without contrast", "ref": "CMS NCD 220.2"},
-    {"keywords": ["complete blood count", "cbc"], "code": "85025", "description": "CBC with automated differential", "ref": "CMS Lab NCD 190.15"},
-    {"keywords": ["basic metabolic panel", "bmp"], "code": "80048", "description": "Basic metabolic panel", "ref": "CMS Lab NCD 190.14"},
-    {"keywords": ["comprehensive metabolic panel", "cmp"], "code": "80053", "description": "Comprehensive metabolic panel", "ref": "CMS Lab NCD 190.14"},
-    {"keywords": ["appendectomy"], "code": "44970", "description": "Laparoscopy, surgical; appendectomy", "ref": "AMA CPT Surgery"},
-    {"keywords": ["cholecystectomy"], "code": "47562", "description": "Laparoscopic cholecystectomy", "ref": "AMA CPT Surgery"},
-    {"keywords": ["colonoscopy"], "code": "45378", "description": "Colonoscopy, flexible, diagnostic", "ref": "CMS NCD 210.3"},
-    {"keywords": ["cardiac catheterization"], "code": "93458", "description": "Cardiac cath, left heart, coronary angiography", "ref": "CMS NCD 20.4"},
-    {"keywords": ["physical therapy evaluation", "pt eval"], "code": "97161", "description": "PT evaluation, low complexity", "ref": "CMS LCD L33631"},
-    {"keywords": ["critical care"], "code": "99291", "description": "Critical care, first 30-74 minutes", "ref": "AMA CPT 2024 E/M"},
-]
-
-HCPCS_CODES: List[dict] = [
-    {"keywords": ["ambulance basic life support", "bls"], "code": "A0428", "description": "Ambulance service, BLS, non-emergency", "ref": "CMS Ambulance Fee Schedule"},
-    {"keywords": ["ambulance advanced life support", "als"], "code": "A0427", "description": "Ambulance service, ALS, emergency", "ref": "CMS Ambulance Fee Schedule"},
-    {"keywords": ["oxygen", "home oxygen"], "code": "E1390", "description": "Oxygen concentrator, single delivery port", "ref": "CMS DMEPOS LCD L33797"},
-    {"keywords": ["wheelchair"], "code": "E1130", "description": "Standard wheelchair", "ref": "CMS DMEPOS"},
-    {"keywords": ["insulin"], "code": "J1815", "description": "Injection, insulin, per 5 units", "ref": "CMS Part B Drug File"},
-    {"keywords": ["covid vaccine"], "code": "G0011A", "description": "Administration, COVID-19 vaccine", "ref": "CMS MLN Matters MM12439"},
-]
-
-ICD10_PCS: List[dict] = [
-    {"keywords": ["appendectomy"], "code": "0DTJ4ZZ", "description": "Resection of Appendix, Percutaneous Endoscopic", "ref": "ICD-10-PCS Guidelines B3"},
-    {"keywords": ["cholecystectomy"], "code": "0FT44ZZ", "description": "Resection of Gallbladder, Percutaneous Endoscopic", "ref": "ICD-10-PCS Guidelines B3"},
-    {"keywords": ["coronary artery bypass", "cabg"], "code": "021209W", "description": "Bypass Coronary Artery, Two Arteries", "ref": "ICD-10-PCS Guidelines B3.6a"},
-    {"keywords": ["cesarean", "c-section"], "code": "10D00Z1", "description": "Extraction of Products of Conception, Low, Open", "ref": "ICD-10-PCS Ch. Obstetrics"},
-    {"keywords": ["hip replacement"], "code": "0SR9019", "description": "Replacement of Right Hip Joint, Metal on Polyethylene, Open", "ref": "ICD-10-PCS Guidelines"},
-]
-
-# UB-04 specific
-REVENUE_CODES: List[dict] = [
-    {"keywords": ["room and board", "semi-private"], "code": "0120", "description": "Room & Board – Semi-Private", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["icu", "intensive care"], "code": "0200", "description": "Intensive Care Unit – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["emergency room", "ed", "er"], "code": "0450", "description": "Emergency Room – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["operating room", "or", "surgery"], "code": "0360", "description": "Operating Room Services – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["laboratory", "lab"], "code": "0300", "description": "Laboratory – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["radiology", "imaging", "x-ray", "ct", "mri"], "code": "0320", "description": "Diagnostic Radiology – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["pharmacy", "medication"], "code": "0250", "description": "Pharmacy – General", "ref": "NUBC UB-04 Manual"},
-    {"keywords": ["respiratory", "ventilator"], "code": "0410", "description": "Respiratory Services – General", "ref": "NUBC UB-04 Manual"},
-]
-
-CONDITION_CODES: List[dict] = [
-    {"keywords": ["military service", "veteran"], "code": "02", "description": "Condition is employment related", "ref": "NUBC Condition Codes"},
-    {"keywords": ["auto accident", "motor vehicle"], "code": "04", "description": "HMO enrollee", "ref": "NUBC Condition Codes"},
-    {"keywords": ["skilled nursing facility", "snf"], "code": "41", "description": "Partial hospitalization", "ref": "NUBC Condition Codes"},
-    {"keywords": ["nonelective"], "code": "A9", "description": "Medical/nonelective admission", "ref": "NUBC Condition Codes"},
-]
-
-OCCURRENCE_CODES: List[dict] = [
-    {"keywords": ["accident", "injury date"], "code": "01", "description": "Accident/Medical Coverage – date of accident", "ref": "NUBC Occurrence Codes"},
-    {"keywords": ["auto accident"], "code": "02", "description": "No-fault insurance involved – date of accident", "ref": "NUBC Occurrence Codes"},
-    {"keywords": ["onset of symptoms"], "code": "11", "description": "Onset of Symptoms/Illness", "ref": "NUBC Occurrence Codes"},
-    {"keywords": ["discharge"], "code": "42", "description": "Date of Discharge", "ref": "NUBC Occurrence Codes"},
-]
-
-VALUE_CODES: List[dict] = [
-    {"keywords": ["medicare blood deductible"], "code": "06", "description": "Medicare Blood Deductible", "ref": "NUBC Value Codes"},
-    {"keywords": ["copayment"], "code": "A1", "description": "Deductible – Payer A", "ref": "NUBC Value Codes"},
-    {"keywords": ["coinsurance"], "code": "A2", "description": "Coinsurance – Payer A", "ref": "NUBC Value Codes"},
-]
-
-# MS-DRG lookup — simplified mapping by principal dx family
-MS_DRG_MAP: List[dict] = [
-    {"dx_keywords": ["pneumonia"], "code": "193", "description": "Simple Pneumonia & Pleurisy with MCC", "ref": "CMS IPPS FY2024 Final Rule – MS-DRG v41"},
-    {"dx_keywords": ["heart failure", "chf"], "code": "291", "description": "Heart Failure & Shock with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["stroke", "cerebral infarction"], "code": "064", "description": "Intracranial Hemorrhage or Cerebral Infarction with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["myocardial infarction", "stemi"], "code": "280", "description": "Acute MI, Discharged Alive with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["sepsis"], "code": "871", "description": "Septicemia or Severe Sepsis w/o MV >96 hrs with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["copd"], "code": "190", "description": "COPD with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["uti"], "code": "689", "description": "Kidney & Urinary Tract Infections with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-    {"dx_keywords": ["hip fracture", "femur fracture"], "code": "535", "description": "Fractures of Hip & Pelvis with MCC", "ref": "CMS IPPS FY2024 MS-DRG v41"},
-]
+from code_catalog import (
+    ICD10_CM,
+    ICD10_PCS,
+    CPT_CODES,
+    HCPCS_CODES,
+    REVENUE_CODES,
+    CONDITION_CODES,
+    OCCURRENCE_CODES,
+    VALUE_CODES,
+    MS_DRG_MAP,
+)
 
 
 @dataclass

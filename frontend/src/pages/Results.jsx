@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/http";
-import { CheckCircle, WarningCircle, Download, ArrowsClockwise, FilePlus, ShieldCheck } from "@phosphor-icons/react";
+import { CheckCircle, WarningCircle, Download, ArrowsClockwise, FilePlus, ShieldCheck, FilePdf } from "@phosphor-icons/react";
 
 export default function ResultsPage() {
   const { id } = useParams();
@@ -23,6 +23,26 @@ export default function ResultsPage() {
       await load();
     } catch (e) {
       await load();
+    }
+  };
+
+  const exportPDF = async () => {
+    try {
+      const token = localStorage.getItem("chc_access_token");
+      const res = await fetch(
+        `${process.env.REACT_APP_BACKEND_URL}/api/coding/sessions/${session.id}/pdf`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error("PDF export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chc-codes-${session.id.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -67,8 +87,11 @@ export default function ResultsPage() {
           <p className="mt-1 text-sm text-chc-slate">{session.claim_type} · {session.payer}{session.state ? ` / ${session.state}` : ""} · {(session.specialty || []).join(", ")}</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportPDF} data-testid="export-pdf" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
+            <FilePdf size={14} /> Download PDF
+          </button>
           <button onClick={exportCSV} data-testid="export-csv" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
-            <Download size={14} /> Download CSV
+            <Download size={14} /> CSV
           </button>
           <button onClick={rerun} data-testid="rerun-btn" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
             <ArrowsClockwise size={14} /> Review again
