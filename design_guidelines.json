@@ -1,0 +1,108 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4_swiss_high_contrast_medical",
+  "typography": {
+    "primary_font": "IBM Plex Sans",
+    "secondary_font": "IBM Plex Sans",
+    "mono_font": "IBM Plex Mono",
+    "font_import_url": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap",
+    "hierarchy": {
+      "h1": "text-4xl font-semibold tracking-tight text-slate-900",
+      "h2": "text-2xl font-semibold tracking-tight text-slate-900",
+      "h3": "text-lg font-medium tracking-tight text-slate-900",
+      "body": "text-sm text-slate-600 leading-relaxed",
+      "code": "font-mono text-sm font-medium text-[#003F87] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100",
+      "label": "text-xs font-semibold uppercase tracking-wider text-slate-500"
+    }
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#003F87",
+      "light": "#0073CF",
+      "foreground": "#FFFFFF"
+    },
+    "accent": {
+      "DEFAULT": "#00AEEF",
+      "foreground": "#FFFFFF"
+    },
+    "background": {
+      "app": "#F4F8FC",
+      "card": "#FFFFFF",
+      "sidebar": "#FFFFFF"
+    },
+    "border": {
+      "DEFAULT": "#E2E8F0",
+      "focus": "#0073CF",
+      "light": "#F1F5F9"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#64748B",
+      "muted": "#94A3B8"
+    },
+    "status": {
+      "success": "#059669",
+      "warning": "#D97706",
+      "error": "#DC2626",
+      "info": "#0073CF",
+      "success_bg": "#D1FAE5",
+      "warning_bg": "#FEF3C7",
+      "error_bg": "#FEE2E2",
+      "info_bg": "#DBEAFE"
+    }
+  },
+  "spacing_and_layout": {
+    "global_padding": "p-6 md:p-8",
+    "card_padding": "p-5 md:p-6",
+    "gap_standard": "gap-6",
+    "gap_tight": "gap-3",
+    "border_radius": "rounded-md",
+    "sidebar_width": "w-64 md:w-72",
+    "header_height": "h-16",
+    "grid_strategy": "The 'Control Room' grid: dense, structured, maximizing viewport space. Medical code tables and forms should align sharply."
+  },
+  "components": {
+    "button": "rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0073CF] focus-visible:ring-offset-2",
+    "card": "bg-white border border-slate-200 rounded-md shadow-sm",
+    "input": "flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0073CF] focus-visible:border-transparent",
+    "badge": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+    "wizard_step": "flex flex-col items-center text-sm font-medium",
+    "sidebar_link": "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+  },
+  "media": {
+    "image_urls": {
+      "auth_split_hero": {
+        "url": "https://images.pexels.com/photos/6203473/pexels-photo-6203473.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "ECG graph on a grid background symbolizing heartbeat and medical data, used for the left side of the split-panel registration/login page.",
+        "category": "hero"
+      },
+      "hospital_building": {
+         "url": "https://images.unsplash.com/photo-1662414185445-b9a05e26dba0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwxfHxibHVlJTIwbW9kZXJuJTIwaG9zcGl0YWwlMjBidWlsZGluZ3xlbnwwfHx8fDE3NzY1Njc3Mzd8MA&ixlib=rb-4.1.0&q=85",
+         "description": "Clean modern blue hospital building. Can be used as alternative auth background.",
+         "category": "background"
+      },
+      "company_logo": {
+        "url": "https://images.unsplash.com/photo-1661453444153-b0cceeaadd4c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwyfHxjb21wYW55JTIwbG9nbyUyMGJsdWUlMjBzaGllbGR8ZW58MHx8fHwxNzc2NTY3NzM3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract blue and white logo to be used as a placeholder for CHC Pro AI brand logo.",
+        "category": "logo"
+      }
+    }
+  },
+  "animations": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "ocr_scan": "animate-pulse border-2 border-[#00AEEF] bg-[#DBEAFE]/30",
+    "progress_bar": "transition-all duration-500 ease-out",
+    "fade_in": "animate-in fade-in duration-300"
+  },
+  "icons_library": "@phosphor-icons/react",
+  "instructions_to_main_agent": [
+    "Install required dependencies: `yarn add @phosphor-icons/react react-hook-form @hookform/resolvers zod lucide-react`",
+    "Configure Tailwind CSS to use the specific color hex codes and IBM Plex Sans/Mono fonts.",
+    "Ensure the split-panel layout uses `auth_split_hero` or `hospital_building` on the left pane with an overlay (`bg-[#003F87]/80` or `bg-[#003F87]/60`) for brand messaging.",
+    "Implement the 8-step coding wizard using a sticky top progress bar. The 8 steps: 1. Upload, 2. OCR Scan, 3. PHI Purge, 4. AI Analysis, 5. ICD-10 Review, 6. CPT/HCPCS Review, 7. MS-DRG/Modifiers, 8. Final Export.",
+    "Medical codes (ICD-10, CPT, etc.) MUST use the `code` typography style (monospace font) for quick scanning.",
+    "The UI should feel extremely dense but readable (Control Room Grid). Avoid massive paddings on data tables. Use subtle 1px borders.",
+    "All interactive elements MUST have `data-testid` attributes.",
+    "Do not use generic 'Inter' or 'Roboto'. Inject the IBM Plex Sans font."
+  ]
+}
