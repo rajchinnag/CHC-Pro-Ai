@@ -5,7 +5,7 @@ No PHI is included (results contain only codes + guideline refs).
 """
 from __future__ import annotations
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from reportlab.lib import colors
@@ -97,7 +97,7 @@ def build_pdf(session: dict) -> bytes:
     if session.get("state"):
         meta += f" ({session['state']})"
     meta += f" · Specialty: {', '.join(session.get('specialty') or []) or '—'}"
-    meta += f" · Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+    meta += f" · Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
     story.append(Paragraph(meta, st["sub"]))
 
     phi = session.get("phi_report") or {}

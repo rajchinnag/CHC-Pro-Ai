@@ -56,37 +56,26 @@ Sans / IBM Plex Mono.
 11. Full audit trail (no PHI in logs).
 12. No external AI APIs at any stage.
 
-## 5. What's been implemented (2026-02-19)
+## 5. What's been implemented
 
-### Backend (`/app/backend`)
+### Phase 1 (2026-02-19) — MVP
 - `auth_utils.py` — bcrypt, JWT (access + refresh + MFA-challenge + registration stage tokens), TOTP, QR PNG as base64, validators (NPI / EIN / password strength).
-- `phi_purger.py` — 18-category Safe-Harbor redaction via regex + contextual
-  rules for names / DOB / age>89 / provider names.
-- `coding_engine.py` — dictionaries for ICD-10-CM, ICD-10-PCS, CPT, HCPCS,
-  Revenue, Condition, Occurrence, Value codes + MS-DRG grouper + MUE/NCCI
-  edit checks + payer-aware processing log.
-- `ocr_service.py` — Tesseract + pdfplumber + python-docx extraction.
-- `server.py` — FastAPI app with all routes under `/api`:
-  - Auth: `/register`, `/verify-otp`, `/confirm-mfa`, `/login`, `/login-mfa`,
-    `/refresh`, `/me`, `/logout`
-  - Admin: `/admin/pending`, `/admin/users`, `/admin/users/{id}/approve|reject|suspend`, `/admin/audit`
-  - Coding: `/coding/sessions` (create / list), `/coding/sessions/{id}` (get /
-    delete), `/coding/sessions/{id}/upload`, `/coding/sessions/{id}/process`
-  - Settings: `/settings/change-password`, `/settings/reset-mfa`,
-    `/settings/confirm-mfa-reset`
-  - `GET /api/captcha` — local arithmetic challenge (no 3rd-party).
-- Startup: indexes, admin + coder seeding, hourly 24h-purge background task.
-- **27/27 backend tests passing** (see `/app/backend/tests/backend_test.py`).
+- `phi_purger.py` — 18-category Safe-Harbor redaction.
+- `coding_engine.py` — ICD/CPT/HCPCS/MS-DRG dictionaries with MUE+NCCI edits (~60 codes).
+- `ocr_service.py` — Tesseract + pdfplumber + python-docx.
+- `server.py` — FastAPI app with all /api routes (auth, admin, coding, settings), startup indexes, admin + coder seeding, 24h purge loop.
+- Frontend: Landing, Login (2-step MFA), Register (4-stage OTP+QR), Dashboard, 6-step Wizard, Results (CSV export), History, Admin Pending/Users/Audit, Settings.
+- Idle-logout + 60s warning modal, bearer-token auth, healthcare-blue design in IBM Plex Sans/Mono.
+- **27/27 Phase 1 backend tests passing.**
 
-### Frontend (`/app/frontend`)
-- Routes: `/`, `/login`, `/register`, `/app/{dashboard,wizard,results/:id,history,settings,help,admin/pending,admin/users,admin/audit}`.
-- Landing (split panel), Login (2-step w/ MFA), Register (4-stage w/ OTP + QR).
-- Dashboard, 6-step coding wizard, Results page with CSV export,
-  History (24h), Admin Pending/Users/Audit, Settings (change password,
-  reset MFA).
-- AuthContext with bearer-token storage, 5-min idle logout + 60s warning modal.
-- Tailwind config + IBM Plex Sans/Mono fonts + healthcare blue palette.
-- `data-testid` on every interactive element.
+### Phase 2 (2026-02-19 evening) — Integrations & depth
+- **Resend email** (`email_service.py`) — OTP, approval, rejection, and admin-notification templates. Dev-mode fallback when key missing.
+- **Google reCAPTCHA v2** (`captcha_service.py`) — real Google siteverify + local arithmetic fallback. Frontend uses `react-google-recaptcha` with `REACT_APP_RECAPTCHA_SITE_KEY`.
+- **Expanded dictionary** (`code_catalog.py`) — ~550 entries across ICD-10-CM, ICD-10-PCS, CPT, HCPCS, Revenue, Condition, Occurrence, Value codes + MS-DRG mappings.
+- **PDF export** (`pdf_export.py`) — reportlab server-rendered PDF with healthcare-blue styling; `GET /api/coding/sessions/{id}/pdf` endpoint.
+- **CMS LCD/NCD refresh** (`cms_refresh.py`) — monthly background task; `GET /api/cms/status` + admin-only `POST /api/cms/refresh`; dashboard "Last refreshed" badge + manual Refresh button.
+- **CORS hardening** — explicit origins from `CORS_ORIGINS` env.
+- **17/17 Phase 2 backend tests passing.**
 
 ### Seeded accounts
 - Admin — `admin@chcpro.ai` / `AdminPass@2025!` (no MFA)
