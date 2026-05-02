@@ -1,91 +1,40 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap");
+/* CHC Pro AI — Global styles
+   IBM Plex Sans + IBM Plex Mono — per design_guidelines.json
+   Navy #003F87 · Teal #0073CF */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-@layer base {
-  :root {
-    /* Healthcare Blue palette mapped to shadcn tokens */
-    --background: 214 60% 97%;   /* #F4F8FC */
-    --foreground: 222 47% 11%;   /* #0F172A */
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 213 100% 26%;     /* #003F87 */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 214 60% 95%;
-    --secondary-foreground: 213 100% 26%;
-    --muted: 214 40% 93%;
-    --muted-foreground: 215 20% 45%;
-    --accent: 198 100% 47%;      /* #00AEEF */
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 90%;
-    --input: 214 32% 88%;
-    --ring: 208 100% 41%;        /* #0073CF */
-    --radius: 0.5rem;
-  }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html, body, #root {
   height: 100%;
-  background-color: hsl(var(--background));
 }
 
 body {
-  margin: 0;
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
-  color: hsl(var(--foreground));
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #0F172A;
+  background: #F8FAFC;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-code, .font-mono {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+/* Remove default button styles */
+button {
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
-@layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+/* Focus ring — accessibility */
+:focus-visible {
+  outline: 2px solid #0073CF;
+  outline-offset: 2px;
 }
 
-/* Selection uses brand */
-::selection { background: #0073CF33; color: #003F87; }
-
-/* Subtle grid texture used on hero panels */
-.grid-paper {
-  background-image:
-    linear-gradient(to right, rgba(0, 63, 135, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 63, 135, 0.08) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-
-/* Scanline effect for OCR processing visualization */
-.scanline {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.scanline::before {
-  content: "";
-  position: absolute;
-  left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #00AEEF, transparent);
-  animation: scan 1.6s ease-in-out infinite;
-}
-
-/* Custom scroll */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-
-/* Debug wrapper fix */
-@layer base {
-  [data-debug-wrapper="true"] { display: contents !important; }
-}
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: #F1F5F9; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
