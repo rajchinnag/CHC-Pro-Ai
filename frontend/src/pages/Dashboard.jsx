@@ -1,151 +1,366 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/http";
-import { toast } from "sonner";
-import { ArrowRight, Upload, ClockClockwise, ShieldCheck, Database, ArrowsClockwise } from "@phosphor-icons/react";
+/**
+ * CHC Pro AI — Dashboard.jsx
+ * Displays real authenticated user profile from GET /api/v1/auth/me.
+ * Design: IBM Plex Sans, #003F87 navy, #0073CF teal per design_guidelines.json
+ */
+import { useEffect, useState } from 'react';
+import { useNavigate }         from 'react-router-dom';
+import { useAuth }             from '../hooks/useAuth';
+import { getMe, apiError }     from '../services/authService';
 
-export default function Dashboard() {
-  const { user } = useAuth();
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [cms, setCms] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const isAdmin = ["admin", "provider"].includes(user?.role);
+const font = "'IBM Plex Sans', sans-serif";
+const navy = '#003F87';
+const teal = '#0073CF';
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [{ data: s }, { data: c }] = await Promise.all([
-          api.get("/coding/sessions"),
-          api.get("/cms/status"),
-        ]);
-        setSessions(s);
-        setCms(c);
-      } finally { setLoading(false); }
-    })();
-  }, []);
+// ── Shared styles ──────────────────────────────────────────────────────────
+const S = {
+  page: {
+    minHeight: '100vh',
+    background: '#F8FAFC',
+    fontFamily: font,
+  },
+  topbar: {
+    background: navy,
+    padding: '0 32px',
+    height: 56,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topbarBrand: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+  },
+  topbarRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+  },
+  topbarEmail: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+  },
+  logoutBtn: {
+    background: 'rgba(255,255,255,0.12)',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 6,
+    color: '#fff',
+    fontSize: 13,
+    padding: '5px 14px',
+    cursor: 'pointer',
+    fontFamily: font,
+  },
+  body: {
+    maxWidth: 900,
+    margin: '0 auto',
+    padding: '36px 24px',
+  },
+  greeting: {
+    fontSize: 24,
+    fontWeight: 600,
+    color: navy,
+    marginBottom: 4,
+  },
+  greetingSub: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 32,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 16,
+    marginBottom: 32,
+  },
+  statCard: {
+    background: '#fff',
+    border: '1px solid #E2E8F0',
+    borderRadius: 10,
+    padding: '20px 20px 18px',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: 6,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 600,
+    color: navy,
+  },
+  badge: (ok) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '3px 10px',
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: 500,
+    background: ok ? '#D1FAE5' : '#FEE2E2',
+    color:      ok ? '#065F46' : '#991B1B',
+  }),
+  profileCard: {
+    background: '#fff',
+    border: '1px solid #E2E8F0',
+    borderRadius: 10,
+    padding: '24px 28px',
+    marginBottom: 24,
+  },
+  profileTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: navy,
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottom: '1px solid #F1F5F9',
+  },
+  profileRow: {
+    display: 'grid',
+    gridTemplateColumns: '160px 1fr',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid #F8FAFC',
+  },
+  profileKey: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  profileVal: {
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  actionCard: {
+    background: navy,
+    borderRadius: 10,
+    padding: '24px 28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  actionText: {
+    color: '#fff',
+  },
+  actionBtn: {
+    background: '#fff',
+    color: navy,
+    border: 'none',
+    borderRadius: 8,
+    padding: '10px 24px',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: font,
+    whiteSpace: 'nowrap',
+  },
+  err: {
+    background: '#FEE2E2',
+    border: '1px solid #FECACA',
+    borderRadius: 8,
+    padding: '10px 14px',
+    color: '#991B1B',
+    fontSize: 13,
+    marginBottom: 20,
+  },
+  spinner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '60vh',
+    flexDirection: 'column',
+    gap: 14,
+    color: '#64748B',
+    fontSize: 14,
+  },
+};
 
-  const refreshCMS = async () => {
-    setRefreshing(true);
-    try {
-      const { data } = await api.post("/cms/refresh");
-      setCms(data);
-      toast.success("CMS catalogue refreshed");
-    } catch (e) {
-      toast.error("Failed to refresh CMS catalogue");
-    } finally { setRefreshing(false); }
-  };
-
-  const cmsDate = cms?.refreshed_at ? new Date(cms.refreshed_at).toLocaleString() : "never";
-
+// ── Spinner ────────────────────────────────────────────────────────────────
+function Spinner() {
   return (
-    <div className="space-y-6" data-testid="dashboard-page">
-      <div>
-        <p className="text-[11px] uppercase tracking-[0.25em] text-chc-slate">Dashboard</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-chc-ink">
-          Welcome, {user?.first_name} <span className="text-chc-slate font-normal">· {user?.facility_name}</span>
-        </h1>
-        <p className="mt-1 text-sm text-chc-slate">Start a new coding session or review what's active in the last 24 hours.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard testid="stat-active" label="Active sessions" value={loading ? "…" : sessions.length} hint="/ 2 maximum" />
-        <StatCard testid="stat-retention" label="Retention" value="24h" hint="Auto-purge enforced" />
-        <StatCard testid="stat-external" label="External AI" value="0" hint="In-process PHI redaction" accent />
-      </div>
-
-      <div className="rounded-md border border-border bg-white p-5" data-testid="cms-status-card">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-md bg-chc-mist flex items-center justify-center">
-              <Database size={18} className="text-chc-navy" />
-            </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-chc-slate">CMS LCD / NCD catalogue</p>
-              <p className="text-sm text-chc-ink mt-0.5">
-                Last refreshed <span className="font-mono text-chc-navy" data-testid="cms-last-refresh">{cmsDate}</span>
-              </p>
-              <p className="text-[11px] text-chc-slate mt-0.5">
-                {cms?.datasets?.length || 0} datasets tracked · Monthly auto-refresh
-              </p>
-            </div>
-          </div>
-          {isAdmin && (
-            <button onClick={refreshCMS} disabled={refreshing} data-testid="cms-refresh-btn"
-              className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-chc-navy hover:bg-chc-mist disabled:opacity-60">
-              <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh now"}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Link to="/app/wizard" data-testid="cta-new-session"
-          className="group relative overflow-hidden rounded-md border border-border bg-chc-navy p-6 text-white transition-all hover:shadow-lg">
-          <div className="absolute inset-0 grid-paper opacity-20" />
-          <div className="relative flex items-start justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-chc-cyan">New coding session</p>
-              <h3 className="mt-2 text-2xl font-semibold">Upload records & generate codes</h3>
-              <p className="mt-2 text-sm text-white/80 max-w-xs">Guided 6-step wizard — OCR, PHI purge, and multi-payer coding in one flow.</p>
-            </div>
-            <div className="rounded-md bg-white/10 p-3 border border-white/20">
-              <Upload size={22} />
-            </div>
-          </div>
-          <div className="relative mt-8 inline-flex items-center gap-2 text-sm font-medium text-chc-cyan">
-            Start now <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-          </div>
-        </Link>
-
-        <div className="rounded-md border border-border bg-white p-6">
-          <p className="text-[11px] uppercase tracking-widest text-chc-slate">Security posture</p>
-          <ul className="mt-3 space-y-2 text-sm text-chc-ink">
-            <li className="flex items-center gap-2"><ShieldCheck weight="fill" className="text-emerald-600" size={16} /> 5-min idle logout enforced</li>
-            <li className="flex items-center gap-2"><ShieldCheck weight="fill" className="text-emerald-600" size={16} /> TOTP MFA (RFC 6238)</li>
-            <li className="flex items-center gap-2"><ShieldCheck weight="fill" className="text-emerald-600" size={16} /> JWT rotation, 15-min access tokens</li>
-            <li className="flex items-center gap-2"><ShieldCheck weight="fill" className="text-emerald-600" size={16} /> 24-hour file auto-purge</li>
-            <li className="flex items-center gap-2"><ShieldCheck weight="fill" className="text-emerald-600" size={16} /> Audit trail on every action</li>
-          </ul>
-        </div>
-
-        <div className="rounded-md border border-border bg-white p-6">
-          <p className="text-[11px] uppercase tracking-widest text-chc-slate">Recent sessions</p>
-          {loading ? (
-            <p className="mt-3 text-sm text-chc-slate">Loading…</p>
-          ) : sessions.length === 0 ? (
-            <div className="mt-3 rounded-md border border-dashed border-border p-4 text-sm text-chc-slate" data-testid="no-sessions">
-              No sessions yet. Start your first from the wizard.
-            </div>
-          ) : (
-            <ul className="mt-3 space-y-3">
-              {sessions.map((s) => (
-                <li key={s.id} className="flex items-center justify-between rounded-md border border-border p-3">
-                  <div>
-                    <p className="font-mono text-xs text-chc-ink">{s.id.slice(0, 8)}</p>
-                    <p className="text-[11px] text-chc-slate">{s.claim_type} · {s.payer}</p>
-                  </div>
-                  <Link to={`/app/results/${s.id}`} data-testid={`session-link-${s.id}`} className="text-xs text-chc-blue hover:underline">Open →</Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to="/app/history" data-testid="view-history" className="mt-4 inline-flex items-center gap-1.5 text-xs text-chc-blue hover:underline">
-            <ClockClockwise size={14} /> View 24-hour history
-          </Link>
-        </div>
-      </div>
+    <div style={S.spinner}>
+      <div style={{
+        width: 36, height: 36, borderRadius: '50%',
+        border: '3px solid #E2E8F0', borderTopColor: navy,
+        animation: 'spin 0.7s linear infinite',
+      }} />
+      <span>Loading your profile…</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-function StatCard({ label, value, hint, accent, testid }) {
+// ── Main ───────────────────────────────────────────────────────────────────
+export default function Dashboard() {
+  const navigate       = useNavigate();
+  const { logout }     = useAuth();
+  const [profile, setProfile]   = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error,   setError]     = useState('');
+
+  useEffect(() => {
+    getMe()
+      .then(setProfile)
+      .catch(e => setError(apiError(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleLogout() {
+    await logout();
+    navigate('/login');
+  }
+
+  function fmt(val) {
+    if (val === null || val === undefined || val === '') return '—';
+    return String(val);
+  }
+
+  function fmtSpecialty(s) {
+    if (!s) return '—';
+    return s.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }); }
+    catch { return iso; }
+  }
+
   return (
-    <div className={`rounded-md border p-5 ${accent ? "border-chc-cyan/40 bg-chc-mist" : "border-border bg-white"}`} data-testid={testid}>
-      <p className="text-[11px] uppercase tracking-widest text-chc-slate">{label}</p>
-      <p className={`mt-1 text-3xl font-semibold tracking-tight ${accent ? "text-chc-navy" : "text-chc-ink"}`}>{value}</p>
-      <p className="mt-1 text-xs text-chc-slate">{hint}</p>
+    <div style={S.page}>
+
+      {/* Top bar */}
+      <div style={S.topbar}>
+        <span style={S.topbarBrand}>Carolin Code Pro AI</span>
+        <div style={S.topbarRight}>
+          {profile && (
+            <span style={S.topbarEmail} data-testid="topbar-email">
+              {profile.email}
+            </span>
+          )}
+          <button
+            style={S.logoutBtn}
+            onClick={handleLogout}
+            data-testid="logout-btn"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <div style={S.body}>
+
+        {error && <div style={S.err} data-testid="dashboard-error">{error}</div>}
+
+        {loading && <Spinner />}
+
+        {!loading && profile && (
+          <>
+            {/* Greeting */}
+            <div
+              style={S.greeting}
+              data-testid="dashboard-greeting"
+            >
+              Welcome back, {profile.first_name} {profile.last_name}
+            </div>
+            <div style={S.greetingSub}>
+              {fmtSpecialty(profile.specialty)} · {profile.state}
+            </div>
+
+            {/* Stat cards */}
+            <div style={S.grid}>
+              <div style={S.statCard} data-testid="stat-npi">
+                <div style={S.statLabel}>NPI</div>
+                <div style={S.statValue}>{fmt(profile.npi)}</div>
+              </div>
+
+              <div style={S.statCard} data-testid="stat-specialty">
+                <div style={S.statLabel}>Specialty</div>
+                <div style={S.statValue}>{fmtSpecialty(profile.specialty)}</div>
+              </div>
+
+              <div style={S.statCard} data-testid="stat-state">
+                <div style={S.statLabel}>Practice state</div>
+                <div style={S.statValue}>{fmt(profile.state)}</div>
+              </div>
+
+              <div style={S.statCard} data-testid="stat-pecos">
+                <div style={S.statLabel}>PECOS enrollment</div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={S.badge(profile.pecos_enrolled)}>
+                    {profile.pecos_enrolled ? '✓ Enrolled' : '✗ Not enrolled'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={S.statCard} data-testid="stat-mfa">
+                <div style={S.statLabel}>Two-factor auth</div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={S.badge(profile.mfa_enabled)}>
+                    {profile.mfa_enabled ? '✓ Enabled' : '✗ Not enabled'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={S.statCard} data-testid="stat-verified">
+                <div style={S.statLabel}>Email verified</div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={S.badge(profile.is_verified)}>
+                    {profile.is_verified ? '✓ Verified' : '✗ Not verified'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile detail */}
+            <div style={S.profileCard} data-testid="profile-card">
+              <div style={S.profileTitle}>Account details</div>
+
+              {[
+                ['Full name',      `${profile.first_name} ${profile.last_name}`],
+                ['Email',          profile.email],
+                ['Organization',   profile.organization],
+                ['NPI',            profile.npi],
+                ['Provider type',  profile.claim_form_preference || 'individual'],
+                ['Claim form',     profile.claim_form_preference || 'Not set'],
+                ['Member since',   fmtDate(profile.created_at)],
+              ].map(([k, v]) => (
+                <div key={k} style={S.profileRow}>
+                  <span style={S.profileKey}>{k}</span>
+                  <span style={S.profileVal}>{fmt(v)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Start coding CTA — active once Layer 2+ is built */}
+            <div style={S.actionCard} data-testid="cta-card">
+              <div style={S.actionText}>
+                <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>
+                  Ready to code a medical record?
+                </div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>
+                  Upload a medical record to start the AI coding workflow.
+                </div>
+              </div>
+              <button
+                style={S.actionBtn}
+                onClick={() => navigate('/upload')}
+                data-testid="start-coding-btn"
+              >
+                Start coding →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
