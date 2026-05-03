@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Carolin Code Pro AI",
+    title="CHC Pro AI",
     description="HIPAA-compliant AI medical coding — Layer 1: Auth & Registration",
     version="1.0.0",
     docs_url  ="/docs"  if not settings.is_production else None,
@@ -152,7 +152,7 @@ async def deep_health():
 @app.get("/", tags=["System"])
 async def root():
     return {
-        "product": "Carolin Code Pro AI",
+        "product": "CHC Pro AI",
         "layer":   "1 — Auth & Registration",
         "version": "1.0.0",
         "docs":    "/docs" if not settings.is_production else "disabled",
