@@ -1,5 +1,5 @@
 """
-CHC Pro AI — Database Models (SQLAlchemy)
+CHC Pro AI – Database Models (SQLAlchemy)
 Tables: users, audit_log
 Run migrations with Alembic: alembic upgrade head
 """
@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, Index,
-    String, Text, func, event
+    String, Text, func
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase
@@ -80,19 +80,19 @@ class User(Base):
 
 class AuditLog(Base):
     """
-    Immutable audit trail — insert only, never update or delete.
+    Immutable audit trail – insert only, never update or delete.
     HIPAA §164.312(b) requires 6-year retention.
     Enforce at DB level: REVOKE UPDATE, DELETE ON audit_log FROM app_user;
     """
     __tablename__ = "audit_log"
 
-    id          = Column(BigInteger, primary_key=True, autoincrement=True)
-    user_id     = Column(UUID(as_uuid=True), nullable=True, index=True)  # Nullable: pre-auth events
-    action_type = Column(String(80), nullable=False, index=True)
-    ip_address  = Column(INET, nullable=True)
-    user_agent  = Column(Text, nullable=True)
-    metadata    = Column(JSONB, nullable=True)  # Never store PHI or passwords here
-    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id       = Column(UUID(as_uuid=True), nullable=True, index=True)  # Nullable: pre-auth events
+    action_type   = Column(String(80), nullable=False, index=True)
+    ip_address    = Column(INET, nullable=True)
+    user_agent    = Column(Text, nullable=True)
+    extra_data    = Column(JSONB, nullable=True)  # Never store PHI or passwords here
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         Index("ix_audit_user_id",    "user_id"),
@@ -104,7 +104,7 @@ class AuditLog(Base):
         return f"<AuditLog {self.action_type} user={self.user_id} at={self.created_at}>"
 
 
-# ── Action type constants ──────────────────────────────────────────────────
+# ── Action type constants ──────────────────────────────────────────────────────
 
 class AuditAction:
     REGISTRATION_STEP1    = "REGISTRATION_STEP1"
