@@ -8,21 +8,22 @@ from config import get_settings
 
 settings = get_settings()
 
-# Convert postgresql:// → postgresql+asyncpg://
+# Convert postgresql:// -> postgresql+asyncpg:// if needed
 _url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+# NullPool does not support pool_size or max_overflow
 engine = create_async_engine(
     _url,
-    echo=not settings.is_production,
+    echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    poolclass=None if settings.is_production else NullPool,
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine, class_=AsyncSession,
-    expire_on_commit=False, autoflush=False,
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
 )
 
 
