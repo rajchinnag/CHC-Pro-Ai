@@ -41,10 +41,13 @@ async def login(request: Request, body: LoginRequest):
     try:
         result = cognito.initiate_auth(body.email, body.password)
     except CognitoError as e:
+        log.error(f"MFA failed: {e.message} code={e.code}")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, e.message)
 
     if result.get("requires_mfa"):
         mfa_token = await mfa_session_create(body.email, result["session"])
+        log.info(f"MFA session stored: {mfa_token[:10]} for {body.email}")
+        log.info(f"MFA session stored: {mfa_token[:10]} for {body.email}")
         return LoginResponse(requires_2fa=True, mfa_session=mfa_token)
 
     attrs = cognito.get_user(body.email) or {}
@@ -75,6 +78,7 @@ async def login_mfa(request: Request, body: MFALoginRequest):
     try:
         tokens = cognito.respond_mfa(email, cognito_session, body.totp_code)
     except CognitoError as e:
+        log.error(f"MFA failed: {e.message} code={e.code}")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, e.message)
 
     await mfa_session_delete(body.mfa_session)
@@ -106,6 +110,7 @@ async def refresh(request: Request, body: TokenRefreshRequest):
     try:
         tokens = cognito.refresh(body.refresh_token, email)
     except CognitoError as e:
+        log.error(f"MFA failed: {e.message} code={e.code}")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, e.message)
 
     return TokenRefreshResponse(
@@ -176,3 +181,8 @@ def _build_profile(attrs: dict) -> UserProfile:
         is_verified=attrs.get("email_verified", "false") == "true",
         mfa_enabled=attrs.get("custom:mfa_enabled", "false") == "true",
     )
+
+
+
+
+

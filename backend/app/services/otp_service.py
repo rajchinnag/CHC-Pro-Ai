@@ -18,7 +18,7 @@ async def get_redis() -> aioredis.Redis:
     global _redis
     if _redis is None:
         _redis = await aioredis.from_url(
-            settings.REDIS_URL, encoding="utf-8", decode_responses=True
+            "redis://127.0.0.1:6379/0", encoding="utf-8", decode_responses=True, socket_timeout=5, socket_connect_timeout=5
         )
     return _redis
 
@@ -257,3 +257,5 @@ async def blocklist_add(user_id: str, ttl_seconds: int) -> None:
 async def blocklist_check(user_id: str) -> bool:
     r = await get_redis()
     return bool(await r.get(f"chc:blocklist:{user_id}"))
+
+

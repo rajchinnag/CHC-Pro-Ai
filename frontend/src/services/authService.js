@@ -18,9 +18,9 @@ export const api = axios.create({
 let _accessToken = null;
 
 export const tokens = {
-  setAccess:  (t) => { _accessToken = t; },
-  getAccess:  ()  => _accessToken,
-  clearAccess: () => { _accessToken = null; },
+  setAccess:  (t) => { _accessToken = t; sessionStorage.setItem('chc_access_token', t); },
+  getAccess:  ()  => _accessToken || sessionStorage.getItem('chc_access_token'),
+  clearAccess: () => { _accessToken = null; sessionStorage.removeItem('chc_access_token'); },
   setRefresh: (t) => sessionStorage.setItem('chc_refresh', t),
   getRefresh: ()  => sessionStorage.getItem('chc_refresh'),
   clearRefresh: () => sessionStorage.removeItem('chc_refresh'),

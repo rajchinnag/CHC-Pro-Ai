@@ -5,9 +5,9 @@ POST /api/v1/auth/register/step2/verify-npi   NPI + OIG + PECOS
 POST /api/v1/auth/register/step3/send-otp     Send 6-digit OTP
 POST /api/v1/auth/register/step3/verify-otp   Verify OTP
 POST /api/v1/auth/register/step4/set-password Password setup
-POST /api/v1/auth/register/step4/setup-2fa    Generate QR code
-POST /api/v1/auth/register/step4/verify-2fa   Confirm first TOTP
-POST /api/v1/auth/register/step5/esignature   Sign + create Cognito user
+POST /api/v1/auth/register/step4/setup-2fa    Create user + get Cognito QR
+POST /api/v1/auth/register/step4/verify-2fa   Verify TOTP with Cognito
+POST /api/v1/auth/register/step5/esignature   Sign + complete registration
 """
 import logging
 from fastapi import APIRouter, HTTPException, Request, status
@@ -27,11 +27,10 @@ from app.services.cognito_service import cognito, CognitoError
 from app.services.esignature_service import store_signature, ESignatureError
 from app.services.npi_service import check_oig, check_pecos, verify_npi, NPIError, OIGExcludedError
 from app.services.otp_service import (
-    generate_otp, new_totp_secret, send_otp_email, send_otp_sms,
+    generate_otp, send_otp_email, send_otp_sms,
     session_create, session_delete, session_get, session_update,
-    totp_qr_base64, verify_otp, verify_totp,
+    totp_qr_base64, verify_otp,
     OTPDeliveryError, OTPExpiredError, OTPInvalidError, OTPRateLimitError,
-    SessionExpiredError,
 )
 from config import get_settings
 
@@ -57,7 +56,7 @@ def _client_info(request: Request) -> tuple[str, str]:
     return ip, ua
 
 
-# ── Step 1: Basic info ─────────────────────────────────────────────────────
+# -- Step 1: Basic info --------------------------------------------------------
 
 @router.post("/step1", response_model=RegStep1Response)
 @limiter.limit(settings.RATE_LIMIT_REGISTER)
@@ -86,7 +85,7 @@ async def step1_basic_info(request: Request, body: RegStep1Request):
     )
 
 
-# ── Step 2: NPI + OIG + PECOS ──────────────────────────────────────────────
+# -- Step 2: NPI + OIG + PECOS ------------------------------------------------
 
 @router.post("/step2/verify-npi", response_model=RegStep2Response)
 @limiter.limit("5/minute")
@@ -131,7 +130,7 @@ async def step2_verify_npi(request: Request, body: RegStep2Request):
     )
 
 
-# ── Step 3: OTP ────────────────────────────────────────────────────────────
+# -- Step 3: OTP ---------------------------------------------------------------
 
 @router.post("/step3/send-otp", response_model=SendOTPResponse)
 @limiter.limit(settings.RATE_LIMIT_OTP)
@@ -179,7 +178,7 @@ async def step3_verify_otp(request: Request, body: VerifyOTPRequest):
     )
 
 
-# ── Step 4a: Password ──────────────────────────────────────────────────────
+# -- Step 4a: Password ---------------------------------------------------------
 
 @router.post("/step4/set-password")
 @limiter.limit("5/minute")
@@ -192,7 +191,6 @@ async def step4_set_password(request: Request, body: SetPasswordRequest):
             "Email must be verified before setting a password. Please complete step 3."
         )
 
-    # Store password temporarily — committed to Cognito at step 5
     await session_update(body.session_token, {
         "step": "4a", "_pwd_tmp": body.password
     })
@@ -203,78 +201,31 @@ async def step4_set_password(request: Request, body: SetPasswordRequest):
     }
 
 
-# ── Step 4b: 2FA Setup ─────────────────────────────────────────────────────
+# -- Step 4b: 2FA Setup --------------------------------------------------------
+# KEY CHANGE: We create the Cognito user HERE so we can call associate_software_token
+# and get Cognito's REAL secret to show in the QR code.
 
 @router.post("/step4/setup-2fa", response_model=Setup2FAResponse)
 async def step4_setup_2fa(request: Request, session_token: str):
     session = _guard(await session_get(session_token))
 
-    secret = new_totp_secret()
-    qr     = totp_qr_base64(session["email"], secret)
-
-    await session_update(session_token, {"totp_secret": secret})
-
-    return Setup2FAResponse(
-        totp_secret=secret,
-        qr_code_url=qr,
-        manual_key=secret,
-        message=(
-            "Scan the QR code with Google Authenticator, Authy, or any TOTP app. "
-            "Then enter the 6-digit code shown in your app to confirm setup."
-        ),
-    )
-
-
-@router.post("/step4/verify-2fa")
-@limiter.limit("5/minute")
-async def step4_verify_2fa(request: Request, body: Verify2FARequest):
-    session = _guard(await session_get(body.session_token))
-
-    secret = session.get("totp_secret")
-    if not secret:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "2FA not configured yet. Please complete step 4b first."
-        )
-
-    if not verify_totp(secret, body.totp_code):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "That code is incorrect. Check your authenticator app and try again. "
-            "Codes refresh every 30 seconds."
-        )
-
-    await session_update(body.session_token, {"step": "4b", "2fa_confirmed": True})
-
-    return {
-        "message":       "Two-factor authentication configured. Please sign the agreements to complete registration.",
-        "session_token": body.session_token,
-    }
-
-
-# ── Step 5: E-Signature + atomic Cognito user creation ────────────────────
-
-@router.post("/step5/esignature", response_model=ESignatureResponse)
-@limiter.limit("3/minute")
-async def step5_esignature(request: Request, body: ESignatureRequest):
-    session = _guard(await session_get(body.session_token))
-
-    # Guard all prior steps
-    if not session.get("email_verified"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 3 (email verification) not complete.")
     if not session.get("_pwd_tmp"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 4a (password) not complete.")
-    if not session.get("2fa_confirmed"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 4b (2FA setup) not complete.")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Password must be set before configuring 2FA. Please complete step 4a."
+        )
 
-    email       = session["email"]
-    password    = session["_pwd_tmp"]
-    totp_secret = session["totp_secret"]
-    ip, ua      = _client_info(request)
+    email    = session["email"]
+    password = session["_pwd_tmp"]
 
-    # ── Atomic user creation ──────────────────────────────────
+    # If user was already created in a previous attempt, delete and recreate
+    if session.get("cognito_user_created"):
+        try:
+            cognito.delete_user(email)
+        except Exception:
+            pass
 
-    user_id = None
+    # Step 1: Create user in Cognito with temp password
     try:
         user_id = cognito.create_user(
             email=email,
@@ -289,27 +240,125 @@ async def step5_esignature(request: Request, body: ESignatureRequest):
                 "custom:provider_type": session.get("provider_type", "individual"),
                 "custom:pecos":         str(session.get("pecos_enrolled", False)),
                 "custom:mfa_enabled":   "true",
-                "custom:totp_secret":   totp_secret,
+                "custom:totp_secret":   "pending",
             },
         )
     except CognitoError as e:
-        code = status.HTTP_409_CONFLICT if e.code == "DUPLICATE_EMAIL" else status.HTTP_500_INTERNAL_SERVER_ERROR
-        raise HTTPException(code, e.message)
+        if e.code == "DUPLICATE_EMAIL":
+            # User exists from failed attempt - delete and retry
+            cognito.delete_user(email)
+            user_id = cognito.create_user(
+                email=email,
+                temp_password=password + "_Tmp1!",
+                attrs={
+                    "given_name":           session["first_name"],
+                    "family_name":          session["last_name"],
+                    "phone_number":         f"+1{session['phone']}",
+                    "custom:npi":           session.get("npi", ""),
+                    "custom:specialty":     session.get("specialty", ""),
+                    "custom:state":         session.get("state", ""),
+                    "custom:provider_type": session.get("provider_type", "individual"),
+                    "custom:pecos":         str(session.get("pecos_enrolled", False)),
+                    "custom:mfa_enabled":   "true",
+                    "custom:totp_secret":   "pending",
+                },
+            )
+        else:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, e.message)
 
+    # Step 2: Set permanent password
     try:
         cognito.set_permanent_password(email, password)
     except CognitoError as e:
-        cognito.delete_user(email)  # Rollback
+        cognito.delete_user(email)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            f"Account creation failed at password step. Please try again.")
+                            "Account creation failed. Please try again.")
 
+    # Step 3: Get Cognito's real TOTP secret via associate_software_token
     try:
-        cognito.enable_mfa(email)
+        real_secret, cognito_session = cognito.get_totp_secret(email, password)
     except CognitoError as e:
-        log.warning(f"MFA enable failed for {email}: {e.message} — user still created")
+        cognito.delete_user(email)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            f"2FA setup failed: {e.message}")
 
-    # ── Store e-signature ──────────────────────────────────────
+    # Step 4: Store real secret and cognito session for verify step
+    qr = totp_qr_base64(email, real_secret)
+    await session_update(session_token, {
+        "totp_secret":          real_secret,
+        "cognito_totp_session": cognito_session,
+        "cognito_user_id":      user_id,
+        "cognito_user_created": True,
+    })
 
+    return Setup2FAResponse(
+        totp_secret=real_secret,
+        qr_code_url=qr,
+        manual_key=real_secret,
+        message=(
+            "Scan the QR code with Google Authenticator, Authy, or any TOTP app. "
+            "Then enter the 6-digit code shown in your app to confirm setup."
+        ),
+    )
+
+
+@router.post("/step4/verify-2fa")
+@limiter.limit("5/minute")
+async def step4_verify_2fa(request: Request, body: Verify2FARequest):
+    session = _guard(await session_get(body.session_token))
+
+    email           = session["email"]
+    cognito_session = session.get("cognito_totp_session")
+    real_secret     = session.get("totp_secret")
+
+    if not cognito_session or not real_secret:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "2FA not configured yet. Please complete step 4b first."
+        )
+
+    # Verify with Cognito using the session from associate_software_token
+    try:
+        cognito.verify_totp_with_cognito(cognito_session, body.totp_code, email)
+    except CognitoError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, e.message)
+
+    # Update stored secret in Cognito custom attribute
+    try:
+        cognito.update_attributes(email, {"custom:totp_secret": real_secret})
+    except Exception:
+        pass
+
+    await session_update(body.session_token, {"step": "4b", "2fa_confirmed": True})
+
+    return {
+        "message":       "Two-factor authentication configured. Please sign the agreements to complete registration.",
+        "session_token": body.session_token,
+    }
+
+
+# -- Step 5: E-Signature + complete registration ------------------------------
+
+@router.post("/step5/esignature", response_model=ESignatureResponse)
+@limiter.limit("3/minute")
+async def step5_esignature(request: Request, body: ESignatureRequest):
+    session = _guard(await session_get(body.session_token))
+
+    if not session.get("email_verified"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 3 (email verification) not complete.")
+    if not session.get("_pwd_tmp"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 4a (password) not complete.")
+    if not session.get("2fa_confirmed"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Step 4b (2FA setup) not complete.")
+
+    email   = session["email"]
+    user_id = session.get("cognito_user_id")
+    ip, ua  = _client_info(request)
+
+    if not user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "User creation not complete. Please restart registration.")
+
+    # Store e-signature
     try:
         sig = await store_signature(
             user_id=user_id,
@@ -325,7 +374,6 @@ async def step5_esignature(request: Request, body: ESignatureRequest):
             user_agent=ua,
         )
     except ESignatureError as e:
-        cognito.delete_user(email)  # Rollback
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e))
 
     # Store sig reference in Cognito
@@ -334,7 +382,6 @@ async def step5_esignature(request: Request, body: ESignatureRequest):
         "custom:sig_at": sig["signed_at"],
     })
 
-    # ── Cleanup ────────────────────────────────────────────────
     await session_delete(body.session_token)
 
     log.info(f"Registration complete: {email} (user_id={user_id})")

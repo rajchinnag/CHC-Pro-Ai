@@ -1,24 +1,18 @@
 /**
  * CHC Pro AI — App.jsx
- * Root router. Replace your existing App.jsx with this file entirely.
- *
- * If your existing App.jsx has anything custom (extra routes, providers,
- * third-party wrappers) merge those into this file.
- *
- * Requires in package.json (run: npm install axios react-router-dom):
- *   "axios": "^1.6.0"
- *   "react-router-dom": "^6.22.0"
+ * Root router.
  */
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
-import ProtectedRoute   from './components/ProtectedRoute';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import Login     from './pages/Login';
 import Register  from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Upload    from './pages/Upload';
+import History   from './pages/History';
 
-// IBM Plex Sans — matches design_guidelines.json
 import './index.css';
 
 export default function App() {
@@ -39,10 +33,26 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute>
+                <Upload />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <ProtectedRoute>
+                <History />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ── Default redirects ── */}
           <Route path="/"  element={<Navigate to="/dashboard" replace />} />
-          <Route path="*"  element={<Navigate to="/dashboard" replace />} />
+          <Route path="*"  element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
