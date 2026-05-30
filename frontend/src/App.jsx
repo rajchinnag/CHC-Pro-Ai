@@ -12,6 +12,7 @@ import Register  from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Upload    from './pages/Upload';
 import History   from './pages/History';
+import Results   from './pages/Results';
 
 import './index.css';
 
@@ -46,6 +47,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <History />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/results/:id"
+            element={
+              <ProtectedRoute>
+                <Results />
               </ProtectedRoute>
             }
           />

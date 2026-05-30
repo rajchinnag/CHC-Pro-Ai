@@ -1,36 +1,37 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "@/lib/http";
-import { CheckCircle, WarningCircle, Download, ArrowsClockwise, FilePlus, ShieldCheck, FilePdf } from "@phosphor-icons/react";
+import { api } from "../lib/http";
+import { CheckCircle, AlertTriangle, Download, RefreshCw, FilePlus, ShieldCheck, FileText } from "lucide-react";
 
 export default function ResultsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = async () => {
-    const { data } = await api.get(`/coding/sessions/${id}`);
-    setSession(data);
-    setLoading(false);
+    try {
+      const { data } = await api.get(`/v1/upload/${id}/coding`);
+      setSession(data);
+    } catch (e) {
+      setError(e.message || "Failed to load results.");
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, [id]);
 
   const rerun = async () => {
     setLoading(true);
-    try {
-      await api.post(`/coding/sessions/${id}/process`);
-      await load();
-    } catch (e) {
-      await load();
-    }
+    await load();
   };
 
   const exportPDF = async () => {
     try {
-      const token = localStorage.getItem("chc_access_token");
+      const token = sessionStorage.getItem("chc_access_token");
       const res = await fetch(
-        `${process.env.REACT_APP_BACKEND_URL}/api/coding/sessions/${session.id}/pdf`,
+        `${process.env.REACT_APP_API_BASE_URL}/api/v1/upload/${id}/coding/pdf`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) throw new Error("PDF export failed");
@@ -38,7 +39,7 @@ export default function ResultsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `chc-codes-${session.id.slice(0, 8)}.pdf`;
+      a.download = `chc-codes-${id.slice(0, 8)}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -57,145 +58,193 @@ export default function ResultsPage() {
     (r.additional_procedures || []).forEach(push);
     push(r.ms_drg);
     (r.revenue_codes || []).forEach(push);
-    (r.condition_codes || []).forEach(push);
-    (r.occurrence_codes || []).forEach(push);
-    (r.value_codes || []).forEach(push);
-    (r.modifiers || []).forEach(push);
     const csv = rows.map((row) => row.map((x) => `"${x ?? ""}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `chc-codes-${session.id.slice(0, 8)}.csv`;
+    a.download = `chc-codes-${id.slice(0, 8)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  if (loading) return <div className="p-6 text-sm text-chc-slate" data-testid="results-loading">Loading results…</div>;
-  if (!session) return <div className="p-6 text-sm text-chc-slate">Session not found.</div>;
+  if (loading) return <div style={styles.loading}>Loading results…</div>;
+  if (error)   return <div style={styles.error}>{error}</div>;
+  if (!session) return <div style={styles.loading}>Session not found.</div>;
 
   const r = session.coding_result;
   const phi = session.phi_report || {};
+  const ctx = session.context || {};
   const totalRedactions = Object.values(phi.redactions || {}).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="space-y-6" data-testid="results-page">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.25em] text-chc-slate">Coding results</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-chc-ink">Session <span className="font-mono text-chc-navy">{session.id.slice(0, 8)}</span></h1>
-          <p className="mt-1 text-sm text-chc-slate">{session.claim_type} · {session.payer}{session.state ? ` / ${session.state}` : ""} · {(session.specialty || []).join(", ")}</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={exportPDF} data-testid="export-pdf" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
-            <FilePdf size={14} /> Download PDF
-          </button>
-          <button onClick={exportCSV} data-testid="export-csv" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
-            <Download size={14} /> CSV
-          </button>
-          <button onClick={rerun} data-testid="rerun-btn" className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-chc-navy hover:bg-chc-mist">
-            <ArrowsClockwise size={14} /> Review again
-          </button>
-          <button onClick={() => navigate("/app/wizard")} data-testid="new-session-btn" className="inline-flex items-center gap-2 rounded-md bg-chc-navy px-3 py-2 text-xs font-medium text-white hover:bg-[#002f67]">
-            <FilePlus size={14} /> Start new record
-          </button>
-        </div>
-      </div>
-
-      {/* PHI report */}
-      <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4" data-testid="phi-report">
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="text-emerald-600 mt-0.5" size={20} weight="fill" />
-          <div className="flex-1">
-            <p className="font-medium text-emerald-900">PHI successfully removed · {totalRedactions} identifiers redacted</p>
-            <p className="mt-0.5 text-xs text-emerald-800">Categories: {(phi.categories_found || []).join(" · ") || "none detected"}</p>
+    <div style={styles.page}>
+      <div style={styles.container}>
+        {/* Header */}
+        <div style={styles.header}>
+          <div>
+            <p style={styles.eyebrow}>Coding results</p>
+            <h1 style={styles.title}>
+              {session.original_filename}{" "}
+              <span style={styles.idBadge}>{id.slice(0, 8)}</span>
+            </h1>
+            <p style={styles.meta}>
+              {ctx.claim_form?.toUpperCase()} · {ctx.payer_name} · {ctx.specialty}
+            </p>
           </div>
-          <p className="text-[11px] text-emerald-800 font-mono">OCR pages: {session.ocr_pages ?? "—"}</p>
+          <div style={styles.btnRow}>
+            <button onClick={exportPDF} style={styles.btnSecondary}>
+              <FileText size={14} style={{ marginRight: 4 }} /> PDF
+            </button>
+            <button onClick={exportCSV} style={styles.btnSecondary}>
+              <Download size={14} style={{ marginRight: 4 }} /> CSV
+            </button>
+            <button onClick={rerun} style={styles.btnSecondary}>
+              <RefreshCw size={14} style={{ marginRight: 4 }} /> Refresh
+            </button>
+            <button onClick={() => navigate("/upload")} style={styles.btnPrimary}>
+              <FilePlus size={14} style={{ marginRight: 4 }} /> New Upload
+            </button>
+          </div>
         </div>
-      </div>
 
-      {r ? (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <Section title="Principal diagnosis (ICD-10-CM)">
-              <CodeRow c={r.principal_diagnosis} />
-            </Section>
-            <Section title="Secondary diagnoses" empty="No secondary diagnoses matched.">
-              {(r.secondary_diagnoses || []).map((c) => <CodeRow key={c.code} c={c} />)}
-            </Section>
-            <Section title="Principal procedure">
-              <CodeRow c={r.principal_procedure} />
-            </Section>
-            <Section title="Additional procedures" empty="None.">
-              {(r.additional_procedures || []).map((c, i) => <CodeRow key={c.code + i} c={c} />)}
-            </Section>
-            {r.ms_drg && (
-              <Section title="MS-DRG assignment">
-                <CodeRow c={r.ms_drg} />
+        {/* PHI report */}
+        <div style={styles.phiBanner}>
+          <ShieldCheck size={20} color="#059669" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={styles.phiTitle}>
+              PHI successfully removed · {totalRedactions} identifiers redacted
+            </p>
+            <p style={styles.phiSub}>
+              Categories: {(phi.categories_found || []).join(" · ") || "none detected"} · Pages: {session.page_count ?? "—"}
+            </p>
+          </div>
+        </div>
+
+        {/* Status */}
+        {session.status !== "coding_complete" && (
+          <div style={styles.statusBox}>
+            <p style={styles.statusText}>
+              Status: <strong>{session.status?.replace(/_/g, " ")}</strong>
+              {session.status === "error" && session.error_message
+                ? ` — ${session.error_message}`
+                : " — processing in progress, refresh in a moment."}
+            </p>
+          </div>
+        )}
+
+        {/* Results */}
+        {r ? (
+          <div style={styles.resultsGrid}>
+            <div style={styles.mainCol}>
+              <Section title="Principal diagnosis (ICD-10-CM)">
+                <CodeRow c={r.principal_diagnosis} />
               </Section>
-            )}
-            {session.claim_type === "UB-04" && (
-              <>
-                <Section title="Revenue codes" empty="None matched.">
-                  {(r.revenue_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
-                </Section>
-                <Section title="Condition codes" empty="None matched.">
-                  {(r.condition_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
-                </Section>
-                <Section title="Occurrence codes" empty="None matched.">
-                  {(r.occurrence_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
-                </Section>
-                <Section title="Value codes" empty="None matched.">
-                  {(r.value_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
-                </Section>
-              </>
-            )}
-            {(r.modifiers || []).length > 0 && (
-              <Section title="Modifiers">
-                {r.modifiers.map((c) => <CodeRow key={c.code} c={c} />)}
+              <Section title="Secondary diagnoses" empty="No secondary diagnoses matched.">
+                {(r.secondary_diagnoses || []).map((c, i) => <CodeRow key={c.code + i} c={c} />)}
               </Section>
-            )}
+              <Section title="Principal procedure">
+                <CodeRow c={r.principal_procedure} />
+              </Section>
+              <Section title="Additional procedures" empty="None.">
+                {(r.additional_procedures || []).map((c, i) => <CodeRow key={c.code + i} c={c} />)}
+              </Section>
+              {r.ms_drg && (
+                <Section title="MS-DRG assignment">
+                  <CodeRow c={r.ms_drg} />
+                </Section>
+              )}
+              {ctx.claim_form === "ub04" && (
+                <>
+                  <Section title="Revenue codes" empty="None matched.">
+                    {(r.revenue_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
+                  </Section>
+                  <Section title="Condition codes" empty="None matched.">
+                    {(r.condition_codes || []).map((c) => <CodeRow key={c.code} c={c} />)}
+                  </Section>
+                </>
+              )}
+              {(r.modifiers || []).length > 0 && (
+                <Section title="Modifiers">
+                  {r.modifiers.map((c) => <CodeRow key={c.code} c={c} />)}
+                </Section>
+              )}
+            </div>
+            <div style={styles.sideCol}>
+              <Section title="Processing log">
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {(r.processing_log || []).map((l, i) => (
+                    <li key={i} style={styles.logItem}>
+                      <CheckCircle size={14} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span style={styles.logText}>{l}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+              {(r.mue_checks || []).length > 0 && (
+                <Section title="MUE edits">
+                  <ul style={{ listStyle: "none", padding: 0 }}>
+                    {r.mue_checks.map((m, i) => <li key={i} style={styles.editItem}>• {m}</li>)}
+                  </ul>
+                </Section>
+              )}
+              {(r.ncci_checks || []).length > 0 && (
+                <Section title="NCCI edits">
+                  <ul style={{ listStyle: "none", padding: 0 }}>
+                    {r.ncci_checks.map((m, i) => <li key={i} style={styles.editItem}>• {m}</li>)}
+                  </ul>
+                </Section>
+              )}
+            </div>
           </div>
-
-          <div className="space-y-6">
-            <Section title="Processing log" mono>
-              <ul className="space-y-2 text-xs">
-                {(r.processing_log || []).map((l, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <CheckCircle size={14} weight="fill" className="text-chc-blue mt-0.5" />
-                    <span className="text-chc-ink font-mono">{l}</span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-            <Section title="MUE edits">
-              <ul className="text-xs text-chc-ink space-y-1 font-mono">
-                {(r.mue_checks || []).map((m, i) => <li key={i}>• {m}</li>)}
-              </ul>
-            </Section>
-            <Section title="NCCI edits">
-              <ul className="text-xs text-chc-ink space-y-1 font-mono">
-                {(r.ncci_checks || []).map((m, i) => <li key={i}>• {m}</li>)}
-              </ul>
-            </Section>
+        ) : (
+          <div style={styles.noResult}>
+            {session.status === "error"
+              ? `Error: ${session.error_message || "Unknown error occurred."}`
+              : "Coding is in progress. This page will refresh automatically."}
           </div>
-        </div>
-      ) : (
-        <div className="rounded-md border border-border bg-white p-6 text-sm text-chc-slate">No coding result yet.</div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-function Section({ title, children, empty, mono }) {
+const styles = {
+  page:       { minHeight: "100vh", background: "#f0f4f8", padding: "32px 24px" },
+  container:  { maxWidth: 1200, margin: "0 auto" },
+  header:     { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 16 },
+  eyebrow:    { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.2em", color: "#64748b", margin: "0 0 4px" },
+  title:      { fontSize: 22, fontWeight: 700, color: "#1e293b", margin: "0 0 4px" },
+  idBadge:    { fontFamily: "monospace", fontSize: 16, color: "#003F87" },
+  meta:       { fontSize: 13, color: "#64748b", margin: 0 },
+  btnRow:     { display: "flex", gap: 8, flexWrap: "wrap" },
+  btnPrimary: { display: "flex", alignItems: "center", padding: "8px 14px", background: "#003F87", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  btnSecondary:{ display: "flex", alignItems: "center", padding: "8px 14px", background: "#fff", color: "#003F87", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, cursor: "pointer" },
+  phiBanner:  { display: "flex", alignItems: "flex-start", gap: 12, background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "12px 16px", marginBottom: 16 },
+  phiTitle:   { fontWeight: 600, color: "#065f46", fontSize: 14, margin: "0 0 2px" },
+  phiSub:     { fontSize: 12, color: "#047857", margin: 0 },
+  statusBox:  { background: "#ede9fe", border: "1px solid #c4b5fd", borderRadius: 10, padding: "12px 16px", marginBottom: 16 },
+  statusText: { fontSize: 14, color: "#5b21b6", margin: 0 },
+  resultsGrid:{ display: "grid", gridTemplateColumns: "1fr minmax(0, 320px)", gap: 20 },
+  mainCol:    { display: "flex", flexDirection: "column", gap: 16 },
+  sideCol:    { display: "flex", flexDirection: "column", gap: 16 },
+  noResult:   { background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: 24, fontSize: 14, color: "#64748b" },
+  loading:    { textAlign: "center", padding: 48, fontSize: 14, color: "#64748b" },
+  error:      { margin: 24, padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", fontSize: 14 },
+  logItem:    { display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 },
+  logText:    { fontFamily: "monospace", fontSize: 12, color: "#1e293b" },
+  editItem:   { fontFamily: "monospace", fontSize: 12, color: "#1e293b", marginBottom: 4 },
+};
+
+function Section({ title, children, empty }) {
   const hasChildren = React.Children.toArray(children).some((c) => c !== null && c !== undefined && c !== false);
   return (
-    <section className="rounded-md border border-border bg-white">
-      <header className="border-b border-border px-5 py-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-chc-ink tracking-tight">{title}</h3>
+    <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+      <header style={{ borderBottom: "1px solid #e2e8f0", padding: "10px 16px" }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", margin: 0 }}>{title}</h3>
       </header>
-      <div className={`p-4 space-y-2 ${mono ? "font-mono" : ""}`}>
-        {hasChildren ? children : <p className="text-xs text-chc-slate italic">{empty || "—"}</p>}
+      <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {hasChildren ? children : <p style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", margin: 0 }}>{empty || "—"}</p>}
       </div>
     </section>
   );
@@ -205,20 +254,29 @@ function CodeRow({ c }) {
   if (!c) return null;
   const verified = c.status === "verified";
   return (
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 rounded-md border border-border px-4 py-3 bg-chc-mist/40">
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="font-mono text-sm font-semibold px-2 py-0.5 rounded bg-white border border-border text-chc-navy">{c.code}</span>
-        <div className="min-w-0">
-          <p className="text-sm text-chc-ink truncate">{c.description}</p>
-          <p className="text-[11px] text-chc-slate">{c.code_type} · {c.guideline_ref}</p>
-          {c.note && <p className="text-[11px] text-amber-700">{c.note}</p>}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <span style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 700, padding: "2px 8px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, color: "#003F87", flexShrink: 0 }}>
+          {c.code}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 13, color: "#1e293b", margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description}</p>
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>{c.code_type} · {c.guideline_ref}</p>
+          {c.note && <p style={{ fontSize: 11, color: "#b45309", margin: "2px 0 0" }}>{c.note}</p>}
         </div>
       </div>
-      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
-        verified ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
-      }`}>
-        {verified ? <CheckCircle weight="fill" size={12} /> : <WarningCircle weight="fill" size={12} />}
-        {verified ? "Verified" : "Review Suggested"}
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600,
+        padding: "3px 10px", borderRadius: 99,
+        background: verified ? "#ecfdf5" : "#fffbeb",
+        border: `1px solid ${verified ? "#a7f3d0" : "#fde68a"}`,
+        color: verified ? "#065f46" : "#92400e",
+        flexShrink: 0,
+      }}>
+        {verified
+          ? <CheckCircle size={12} color="#059669" />
+          : <AlertTriangle size={12} color="#d97706" />}
+        {verified ? "Verified" : "Review"}
       </span>
     </div>
   );

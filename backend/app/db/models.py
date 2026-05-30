@@ -175,3 +175,28 @@ class AuditAction:
     UPLOAD_CONFIRMED      = "UPLOAD_CONFIRMED"
     CONTEXT_SUBMITTED     = "CONTEXT_SUBMITTED"
     UPLOAD_DELETED        = "UPLOAD_DELETED"
+    CODING_COMPLETE       = "CODING_COMPLETE"
+    CODING_FAILED         = "CODING_FAILED"
+
+
+class CodingResult(Base):
+    """
+    Stores the AI-generated coding result for a completed upload.
+    One-to-one with Upload. Created by Layer 3 pipeline.
+    """
+    __tablename__ = "coding_results"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    upload_id   = Column(UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=False, unique=True, index=True)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id"),   nullable=False, index=True)
+    coding_data = Column(JSONB, nullable=False)   # full structured result from claude_coding_engine
+    phi_report  = Column(JSONB, nullable=True)    # redaction counts (no PHI stored)
+    page_count  = Column(Integer, nullable=True)
+    created_at  = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    upload = relationship("Upload", backref="coding_result", uselist=False)
+
+    __table_args__ = (
+        Index("ix_coding_results_upload_id", "upload_id"),
+        Index("ix_coding_results_user_id",   "user_id"),
+    )

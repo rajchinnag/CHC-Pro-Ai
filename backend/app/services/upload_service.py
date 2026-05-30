@@ -34,9 +34,9 @@ MAX_FILE_SIZE = 52_428_800  # 50 MB
 def _s3_client():
     return boto3.client(
         "s3",
-        region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
+        region_name=settings.AWS_REGION,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
     )
 
 
@@ -68,7 +68,7 @@ async def create_presigned_upload_url(
         presigned_url = s3.generate_presigned_url(
             "put_object",
             Params={
-                "Bucket": settings.s3_bucket_raw,
+                "Bucket": settings.S3_BUCKET_RAW,
                 "Key": s3_key,
                 "ContentType": allowed_mimes[0] if allowed_mimes else "application/octet-stream",
                 "ContentLength": file_size_bytes,
@@ -112,7 +112,7 @@ async def strip_file_metadata(s3_key: str, upload_id: str) -> Optional[int]:
     """
     s3 = _s3_client()
     try:
-        obj = s3.get_object(Bucket=settings.s3_bucket_raw, Key=s3_key)
+        obj = s3.get_object(Bucket=settings.S3_BUCKET_RAW, Key=s3_key)
         content_type = obj["ContentType"]
         raw_bytes = obj["Body"].read()
 
@@ -125,7 +125,7 @@ async def strip_file_metadata(s3_key: str, upload_id: str) -> Optional[int]:
 
         # Re-upload stripped version
         s3.put_object(
-            Bucket=settings.s3_bucket_raw,
+            Bucket=settings.S3_BUCKET_RAW,
             Key=s3_key,
             Body=cleaned_bytes,
             ContentType=content_type,
@@ -180,7 +180,7 @@ async def delete_raw_file(s3_key: str) -> bool:
     """
     s3 = _s3_client()
     try:
-        s3.delete_object(Bucket=settings.s3_bucket_raw, Key=s3_key)
+        s3.delete_object(Bucket=settings.S3_BUCKET_RAW, Key=s3_key)
         logger.info(f"Raw file deleted: {s3_key}")
         return True
     except ClientError as e:

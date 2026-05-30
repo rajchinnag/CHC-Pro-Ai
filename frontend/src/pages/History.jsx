@@ -3,15 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { getUploadHistory, deleteUpload } from "../services/uploadService";
 
 const STATUS_COLORS = {
-  pending:          { bg: "#fef3c7", color: "#92400e" },
-  uploaded:         { bg: "#dbeafe", color: "#1e40af" },
-  context_complete: { bg: "#e0e7ff", color: "#3730a3" },
-  ocr_complete:     { bg: "#d1fae5", color: "#065f46" },
-  phi_purged:       { bg: "#d1fae5", color: "#065f46" },
-  phi_verified:     { bg: "#d1fae5", color: "#065f46" },
-  ready:            { bg: "#d1fae5", color: "#065f46" },
-  coding_complete:  { bg: "#dcfce7", color: "#14532d" },
-  error:            { bg: "#fee2e2", color: "#991b1b" },
+  pending:           { bg: "#fef3c7", color: "#92400e" },
+  uploaded:          { bg: "#dbeafe", color: "#1e40af" },
+  context_complete:  { bg: "#e0e7ff", color: "#3730a3" },
+  ocr_processing:    { bg: "#fef9c3", color: "#854d0e" },
+  ocr_complete:      { bg: "#d1fae5", color: "#065f46" },
+  phi_purged:        { bg: "#d1fae5", color: "#065f46" },
+  phi_verified:      { bg: "#d1fae5", color: "#065f46" },
+  coding_in_progress:{ bg: "#ede9fe", color: "#5b21b6" },
+  ready:             { bg: "#d1fae5", color: "#065f46" },
+  coding_complete:   { bg: "#dcfce7", color: "#14532d" },
+  error:             { bg: "#fee2e2", color: "#991b1b" },
 };
 
 function StatusBadge({ status }) {
@@ -62,6 +64,16 @@ export default function History() {
   }
 
   useEffect(() => { load(1); }, []);
+
+  // Auto-poll every 5s while any upload is in a processing state
+  useEffect(() => {
+    const inProgress = uploads.some(u =>
+      ["context_complete","ocr_processing","ocr_complete","phi_purged","phi_verified","coding_in_progress"].includes(u.status)
+    );
+    if (!inProgress) return;
+    const timer = setInterval(() => load(page), 5000);
+    return () => clearInterval(timer);
+  }, [uploads, page]);
 
   async function handleDelete(uploadId) {
     if (!window.confirm("Delete this upload? This cannot be undone.")) return;
@@ -131,9 +143,13 @@ export default function History() {
                   <span style={{ flex: 1.5 }}><StatusBadge status={u.status} /></span>
                   <span style={{ flex: 1.5, fontSize: 12, color: "#64748b" }}>{formatDate(u.created_at)}</span>
                   <span style={{ flex: 1, display: "flex", gap: 8 }}>
-                    {u.status === "ready" || u.status === "coding_complete" ? (
+                    {u.status === "coding_complete" ? (
                       <button style={styles.actionBtn} onClick={() => navigate(`/results/${u.upload_id}`)}>
-                        View
+                        View Codes
+                      </button>
+                    ) : u.status === "context_complete" || u.status === "ocr_processing" || u.status === "ocr_complete" || u.status === "phi_purged" || u.status === "phi_verified" || u.status === "coding_in_progress" ? (
+                      <button style={{ ...styles.actionBtn, color: "#5b21b6", borderColor: "#c4b5fd", cursor: "default" }} disabled>
+                        {u.status === "coding_in_progress" ? "⚙ Coding…" : "⏳ Processing…"}
                       </button>
                     ) : !u.has_context && u.status === "uploaded" ? (
                       <button style={styles.actionBtn} onClick={() => navigate("/upload", { state: { upload_id: u.upload_id, step: 1 } })}>

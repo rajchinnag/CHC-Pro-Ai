@@ -7,8 +7,7 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, statusfrom sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.middleware.auth_middleware import get_current_user
@@ -148,6 +147,7 @@ async def confirm_upload(
 @router.post("/context", response_model=ContextResponse, status_code=status.HTTP_201_CREATED)
 async def submit_context(
     body: ContextRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -208,14 +208,15 @@ async def submit_context(
 
     logger.info(f"Context submitted for upload {body.upload_id}")
 
-    # TODO Layer 3: trigger PHI pipeline here
-    # background_tasks.add_task(run_phi_pipeline, upload_id=body.upload_id)
+    # Layer 3: trigger PHI purge → OCR → AI coding pipeline
+    from app.services.coding_pipeline import run_phi_pipeline
+    background_tasks.add_task(run_phi_pipeline, upload_id=str(body.upload_id), db=db)
 
     return ContextResponse(
         context_id=ctx.id,
         upload_id=body.upload_id,
         status="context_complete",
-        message="Context saved. Ready for PHI pipeline (Layer 3).",
+        message="Context saved. AI coding pipeline started.",
     )
 
 
@@ -323,3 +324,57 @@ async def delete_upload(
     await db.commit()
 
     logger.info(f"Upload deleted: {upload_id} by user {user_id}")
+
+
+# ── Coding result ──────────────────────────────────────────────────────────────
+
+@router.get("/{upload_id}/coding", tags=["Coding"])
+async def get_coding_result(
+    upload_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Return the AI coding result for a completed upload.
+    Status will be coding_complete when ready.
+    Poll this endpoint after submitting context.
+    """
+    from app.db.models import Upload, CodingResult, UploadContext
+    from sqlalchemy import select
+
+    user_id = current_user["sub"]
+
+    upload_row = await db.execute(
+        select(Upload).where(Upload.id == upload_id, Upload.user_id == uuid.UUID(user_id))
+    )
+    upload = upload_row.scalar_one_or_none()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    ctx_row = await db.execute(select(UploadContext).where(UploadContext.upload_id == upload_id))
+    ctx = ctx_row.scalar_one_or_none()
+
+    result_row = await db.execute(select(CodingResult).where(CodingResult.upload_id == upload_id))
+    result = result_row.scalar_one_or_none()
+
+    return {
+        "upload_id": str(upload_id),
+        "status": upload.status,
+        "original_filename": upload.original_filename,
+        "file_format": upload.file_format,
+        "page_count": upload.page_count,
+        "phi_detected": upload.phi_detected,
+        "phi_purge_confirmed": upload.phi_purge_confirmed,
+        "error_message": upload.error_message,
+        "context": {
+            "specialty": ctx.specialty if ctx else None,
+            "payer_name": ctx.payer_name if ctx else None,
+            "payer_type": ctx.payer_type if ctx else None,
+            "claim_form": ctx.claim_form if ctx else None,
+            "code_sets": ctx.code_sets if ctx else [],
+            "state": ctx.state if ctx else None,
+        } if ctx else None,
+        "coding_result": result.coding_data if result else None,
+        "phi_report": result.phi_report if result else None,
+        "completed_at": result.created_at.isoformat() if result else None,
+    }
