@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../lib/http";
+import { api } from "../services/authService";
 import { CheckCircle, AlertTriangle, Download, RefreshCw, FilePlus, ShieldCheck, FileText } from "lucide-react";
 
 export default function ResultsPage() {
