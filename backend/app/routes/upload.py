@@ -116,7 +116,7 @@ async def confirm_upload(
         raise HTTPException(status_code=409, detail=f"Upload already in status: {upload.status}")
 
     # Verify file is in S3
-    exists = await confirm_upload_in_s3(upload.s3_key_raw, settings.s3_bucket_raw)
+    exists = await confirm_upload_in_s3(upload.s3_key_raw, settings.S3_BUCKET_RAW)
     if not exists:
         raise HTTPException(status_code=422, detail="File not found in S3 — upload may have failed")
 
