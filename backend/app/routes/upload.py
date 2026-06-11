@@ -11,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_current_user, AuthenticatedUser
 from app.schemas.upload_schemas import (
     ContextRequest, ContextResponse,
     UploadConfirmRequest, UploadConfirmResponse,
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/v1/upload", tags=["Upload"])
 async def initiate_upload(
     body: UploadInitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Client calls this first. Returns a presigned S3 URL.
@@ -46,7 +46,7 @@ async def initiate_upload(
     """
     from app.db.models import Upload
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
     upload_id = str(uuid.uuid4())
 
     # Generate presigned URL
@@ -91,7 +91,7 @@ async def confirm_upload(
     body: UploadConfirmRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Client calls this after the S3 PUT completes.
@@ -100,7 +100,7 @@ async def confirm_upload(
     from app.db.models import Upload
     from sqlalchemy import select, update
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
 
     # Fetch upload record
     result = await db.execute(
@@ -150,7 +150,7 @@ async def submit_context(
     body: ContextRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Submit the clinical context for an upload.
@@ -159,7 +159,7 @@ async def submit_context(
     from app.db.models import Upload, UploadContext
     from sqlalchemy import select
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
 
     # Verify upload belongs to user
     result = await db.execute(
@@ -228,10 +228,10 @@ async def get_upload_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Return paginated upload history for the current user."""
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
     data = await get_upload_list(db, user_id, page, page_size)
     return UploadListResponse(**data)
 
@@ -242,13 +242,13 @@ async def get_upload_history(
 async def get_upload_detail(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Return full detail for a single upload including context."""
     from app.db.models import Upload, UploadContext
     from sqlalchemy import select
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
 
     result = await db.execute(
         select(Upload).where(
@@ -287,7 +287,7 @@ async def get_upload_detail(
 async def delete_upload(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Delete an upload and its S3 files.
@@ -297,7 +297,7 @@ async def delete_upload(
     from app.services.upload_service import delete_raw_file
     from sqlalchemy import select, delete
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
 
     result = await db.execute(
         select(Upload).where(
@@ -333,7 +333,7 @@ async def delete_upload(
 async def get_coding_result(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Return the AI coding result for a completed upload.
@@ -343,7 +343,7 @@ async def get_coding_result(
     from app.db.models import Upload, CodingResult, UploadContext
     from sqlalchemy import select
 
-    user_id = current_user["sub"]
+    user_id = current_user.user_id
 
     upload_row = await db.execute(
         select(Upload).where(Upload.id == upload_id, Upload.user_id == uuid.UUID(user_id))
