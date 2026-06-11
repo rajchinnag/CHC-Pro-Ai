@@ -379,3 +379,20 @@ async def get_coding_result(
         "phi_report": result.phi_report if result else None,
         "completed_at": result.created_at.isoformat() if result else None,
     }
+
+
+# Dev-only local upload endpoint
+from fastapi import Request as FastAPIRequest
+from fastapi.responses import Response as FastAPIResponse
+
+@router.put('/local/{upload_id}')
+async def local_file_upload(upload_id: str, request: FastAPIRequest, s3_key: str = Query(...)):
+    import os
+    temp_dir = os.path.join(os.path.dirname(__file__), '../../../temp_uploads')
+    os.makedirs(temp_dir, exist_ok=True)
+    local_path = os.path.join(temp_dir, s3_key.replace('/', '_'))
+    body = await request.body()
+    with open(local_path, 'wb') as f:
+        f.write(body)
+    logger.info(f'[dev] File saved: {local_path}')
+    return FastAPIResponse(status_code=200)
